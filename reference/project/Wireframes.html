@@ -1,0 +1,2173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wireframes — Учёт отгрузок</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="android-frame.jsx"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f0ede8; font-family: 'Caveat', cursive; }
+
+  /* Sketch styles */
+  .sk { font-family: 'Caveat', cursive; }
+  .sk-box {
+    border: 2px solid #333;
+    border-radius: 3px;
+    background: #fff;
+    position: relative;
+  }
+  .sk-box::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: 2px;
+    border: 1px solid #aaa;
+    pointer-events: none;
+  }
+  .sk-gray { background: #e8e5df; }
+  .sk-stripe {
+    background: repeating-linear-gradient(
+      -45deg, #f5f3ef, #f5f3ef 4px, #e8e5df 4px, #e8e5df 8px
+    );
+  }
+  .sk-label {
+    font-family: 'Caveat', cursive;
+    font-size: 13px;
+    color: #666;
+    text-align: center;
+    padding: 4px;
+  }
+  .sk-accent { background: #d4e8c2; }
+  .sk-accent2 { background: #c2d4e8; }
+  .sk-accent3 { background: #e8d4c2; }
+  .sk-accent4 { background: #e8c2d4; }
+  .sk-week { background: #2a2a2a; color: #fff; }
+  .sk-day { background: #444; color: #fff; }
+  .sk-subtotal { background: #f0f0c8; border-top: 2px dashed #bbb; }
+
+  /* Auto-hiding overlay scrollbar */
+  .wsm-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.4s ease;
+  }
+  .wsm-scroll:hover,
+  .wsm-scroll.is-scrolling {
+    scrollbar-color: rgba(60,60,60,0.55) transparent;
+  }
+  .wsm-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .wsm-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .wsm-scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    transition: background 0.4s ease;
+  }
+  .wsm-scroll:hover::-webkit-scrollbar-thumb,
+  .wsm-scroll.is-scrolling::-webkit-scrollbar-thumb {
+    background: rgba(60,60,60,0.55);
+  }
+  .wsm-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(40,40,40,0.75);
+  }
+
+  .annotation {
+    font-family: 'Caveat', cursive;
+    font-size: 14px;
+    color: #e05a1a;
+    position: absolute;
+    pointer-events: none;
+  }
+  .arrow {
+    display: inline-block;
+    font-size: 18px;
+    color: #e05a1a;
+  }
+</style>
+</head>
+<body>
+<script type="text/babel">
+const { useState } = React;
+
+/* ─────────── REUSABLE SKETCH ATOMS ─────────── */
+
+const Box = ({ w, h, style, className = '', children, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`sk-box ${className}`}
+    style={{ width: w, height: h, overflow: 'hidden', ...style }}
+  >
+    {children}
+  </div>
+);
+
+const Label = ({ children, size = 13, color = '#555', bold, center, style = {} }) => (
+  <div style={{
+    fontFamily: 'Caveat, cursive',
+    fontSize: size,
+    color,
+    fontWeight: bold ? 700 : 400,
+    textAlign: center ? 'center' : 'left',
+    lineHeight: 1.2,
+    ...style
+  }}>
+    {children}
+  </div>
+);
+
+const Pill = ({ children, color = '#e8e5df', textColor = '#333', size = 12 }) => (
+  <div style={{
+    display: 'inline-flex', alignItems: 'center', padding: '1px 8px',
+    background: color, border: '1.5px solid #333', borderRadius: 20,
+    fontFamily: 'Caveat', fontSize: size, color: textColor,
+    whiteSpace: 'nowrap'
+  }}>
+    {children}
+  </div>
+);
+
+const HR = ({ dashed, color = '#bbb', my = 4 }) => (
+  <div style={{
+    borderTop: `1.5px ${dashed ? 'dashed' : 'solid'} ${color}`,
+    margin: `${my}px 0`
+  }} />
+);
+
+const Row = ({ cols, heights = 26, bg, bold, border }) => {
+  const colWidths = cols.map(c => c.w || 80);
+  return (
+    <div style={{
+      display: 'flex',
+      height: heights,
+      background: bg || 'transparent',
+      borderBottom: border ? '1px solid #ccc' : undefined
+    }}>
+      {cols.map((c, i) => (
+        <div key={i} style={{
+          width: colWidths[i],
+          flexShrink: 0,
+          borderRight: i < cols.length - 1 ? '1px solid #ccc' : undefined,
+          padding: '2px 5px',
+          display: 'flex',
+          alignItems: 'center',
+          overflow: 'hidden'
+        }}>
+          <span style={{
+            fontFamily: 'Caveat, cursive',
+            fontSize: c.size || 12,
+            color: c.color || (bold ? '#000' : '#333'),
+            fontWeight: bold || c.bold ? 700 : 400,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+            {c.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ─────────── COLOR MAP BY RAW MATERIAL ─────────── */
+const RAW_COLORS = {
+  'Огурцы':    { bg: '#d4eac2', dot: '#4a8f2a' },
+  'Черри':     { bg: '#ffd0c0', dot: '#c24a28' },
+  'Томаты':    { bg: '#ffe0b8', dot: '#c87020' },
+  'Патиссоны': { bg: '#fff4a8', dot: '#c49a00' },
+  'Халапеньо': { bg: '#c4dca8', dot: '#1e5020' },
+  'Перец':     { bg: '#f0d8c8', dot: 'linear-gradient(135deg,#c03030 0%,#c03030 50%,#3a8a2a 50%,#3a8a2a 100%)' },
+  'Баклажан':  { bg: '#d8c0e8', dot: '#6030a0' },
+  /* сезонные овощи — справочник расширен, в плане могут быть скрыты при отсутствии отгрузок */
+  'Кабачки':   { bg: '#e0e8c8', dot: '#7a9030' },
+  'Тыква':     { bg: '#ffd8a8', dot: '#d07820' },
+  'Морковь':   { bg: '#ffd0b0', dot: '#d05820' },
+  'Свёкла':    { bg: '#e8c0d0', dot: '#8a2050' },
+  'Лук':       { bg: '#f5e8c8', dot: '#a07820' },
+  'Капуста':   { bg: '#e0ead8', dot: '#5a8050' },
+};
+
+/* Status chip */
+const StatusChip = ({ status }) => {
+  if (status === 'План') {
+    return <Pill color="#e2d4f0" textColor="#5530a0" size={11}>✎ План</Pill>;
+  }
+  if (status === 'Прибыло') {
+    return <Pill color="#c8d8e8" textColor="#1a4a8a" size={11}>⚑ Прибыло</Pill>;
+  }
+  if (status === 'Отправлено') {
+    return <Pill color="#c8e8c8" textColor="#1a6b3a" size={11}>✓ Отпр.</Pill>;
+  }
+  return <Pill color="#fff0c8" textColor="#a06000" size={11}>◷ Заплан.</Pill>;
+};
+
+/* QUALITY BADGE — статус качества рядом с № акта
+   Состояния:
+     none  — 📊 (серый)         данные не внесены, PDF не прикреплён
+     data  — 📊✓ (зелёный)       структурированные данные внесены
+     pdf   — 📎 (синий)          прикреплён только PDF
+     both  — 📊✓📎               и данные, и PDF
+   Клик → открывает модалку «Качество приёмки»
+   Hover → тултип со сводкой
+*/
+const QualityBadge = ({ quality, posInfo }) => {
+  const hasData = !!quality?.hasData;
+  const hasPdf  = !!quality?.hasPdf;
+  const both    = hasData && hasPdf;
+  const state   = both ? 'both' : hasData ? 'data' : hasPdf ? 'pdf' : 'none';
+
+  // tooltip
+  let tip;
+  if (hasData && quality?.summary) {
+    const s = quality.summary;
+    const fmt = (n) => n.toLocaleString('ru-RU');
+    tip =
+      `К оплате: ${fmt(s.payable)} кг (${s.pct}%)` +
+      ` · Брак: ${fmt(s.reject)} кг` +
+      ` · Нестандарт: ${fmt(s.nonStd)} кг` +
+      (hasPdf ? ' · PDF акта прикреплён' : '');
+  } else if (hasPdf) {
+    tip = 'Прикреплён PDF акта · структурированные данные качества ещё не внесены';
+  } else {
+    tip = 'Данные качества не внесены, PDF не прикреплён · клик — открыть форму';
+  }
+
+  // colors per state
+  const palette = {
+    none: { bg:'#ececec', border:'#999',    fg:'#666' },
+    data: { bg:'#e4f1e0', border:'#1a6b3a', fg:'#1a6b3a' },
+    pdf:  { bg:'#e0ebf6', border:'#1a4a8a', fg:'#1a4a8a' },
+    both: { bg:'#e4f1e0', border:'#1a6b3a', fg:'#1a6b3a' },
+  }[state];
+
+  const onClick = (e) => {
+    e.stopPropagation();
+    if (window.__openQuality) window.__openQuality({ ...posInfo, quality });
+  };
+
+  return (
+    <span
+      title={tip}
+      onClick={onClick}
+      style={{
+        display:'inline-flex', alignItems:'center', gap:1,
+        padding:'0 4px', height:16,
+        background: palette.bg,
+        border:`1.2px solid ${palette.border}`,
+        borderRadius: 9,
+        cursor:'pointer',
+        flexShrink:0,
+        lineHeight:1,
+      }}
+    >
+      {(state === 'none' || state === 'data' || state === 'both') && (
+        <span style={{ fontSize:10 }}>📊</span>
+      )}
+      {(state === 'data' || state === 'both') && (
+        <span style={{ fontFamily:'JetBrains Mono, monospace', fontSize:9, fontWeight:700, color:palette.fg, marginLeft:-1 }}>✓</span>
+      )}
+      {(state === 'pdf' || state === 'both') && (
+        <span style={{ fontSize:10, marginLeft: state === 'both' ? 1 : 0 }}>📎</span>
+      )}
+    </span>
+  );
+};
+
+/* ITEM LINE — one supplier+raw within a shipment */
+const ItemLine = ({ raw, kg, supplier, tara, processed, actNumber, quality, isFirst, isLast, compact }) => {
+  const c = RAW_COLORS[raw] || { bg: '#eee', dot: '#999' };
+  const py = compact ? '1px 6px' : '2px 6px';
+  const minH = compact ? 20 : 24;
+  const rowBg = processed
+    ? 'repeating-linear-gradient(135deg,#ececec,#ececec 4px,#e0e0e0 4px,#e0e0e0 8px)'
+    : c.bg + '55';
+  const textDeco = processed ? 'line-through' : 'none';
+  const textCol  = processed ? '#666' : '#222';
+  return (
+    <div style={{
+      display:'flex', alignItems:'stretch',
+      background: rowBg,
+      borderTop: isFirst ? 'none' : '1px dashed #c8d0bd',
+      minHeight: minH
+    }}>
+      <div style={{ width: 4, background: c.dot, flexShrink: 0 }} />
+      {/* Сырьё */}
+      <div style={{ width: 102, padding: py, display:'flex',alignItems:'center',gap:4 }}>
+        <div style={{ width:8, height:8, borderRadius:8, background:c.dot, flexShrink:0 }} />
+        <Label size={12} bold color={textCol} style={{textDecoration:textDeco}}>{raw}</Label>
+      </div>
+      {/* Вес — inline editable look */}
+      <div style={{ width: 88, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        <div style={{ flex:1, border:'1px dashed #999', borderRadius:2, padding:'0 5px', background:processed?'#f0f0f0':'#fffdf2', display:'flex',alignItems:'center',gap:3 }}>
+          <Label size={12} bold color={textCol} style={{textDecoration:textDeco}}>{kg.toLocaleString()}</Label>
+          <div style={{flex:1}}/>
+          <Label size={9} color="#bbb">✎</Label>
+        </div>
+      </div>
+      {/* Поставщик */}
+      <div style={{ width: 118, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        <Label size={12} color={textCol} style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', textDecoration:textDeco}}>{supplier}</Label>
+      </div>
+      {/* Тара */}
+      <div style={{ width: 78, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        {tara ? <Pill color="#fff" size={11}>{tara}</Pill> : <Label size={11} color="#bbb">—</Label>}
+      </div>
+      {/* Переработка: чекбокс + № акта (+ статус качества) — read-only */}
+      <div style={{ flex:1, minWidth: 110, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center', gap:5 }}>
+        <div style={{
+          width:14, height:14, border:'1.5px solid #333', borderRadius:2,
+          background: processed ? '#1a6b3a' : '#fff',
+          display:'flex',alignItems:'center',justifyContent:'center', flexShrink:0
+        }}>
+          {processed && <span style={{ color:'#fff', fontSize:10, lineHeight:1, fontWeight:700 }}>✓</span>}
+        </div>
+        <div style={{
+          flex:1, border:'1px dashed #aaa', borderRadius:2, padding:'0 4px 0 5px',
+          background: processed ? '#e8f0e4' : '#fafafa',
+          minHeight: 18, display:'flex', alignItems:'center', gap:4
+        }}>
+          <Label size={11} color={processed ? '#1a6b3a' : '#bbb'} style={{fontFamily:'JetBrains Mono,monospace', fontSize:10, whiteSpace:'nowrap'}}>
+            {processed ? `№ ${actNumber}` : '№ акта'}
+          </Label>
+          <div style={{flex:1}}/>
+          {processed && (
+            <QualityBadge
+              quality={quality}
+              posInfo={{ raw, supplier, kg, actNumber }}
+            />
+          )}
+        </div>
+      </div>
+      {/* Редактировать */}
+      <div title="Редактировать" style={{
+        width: 28, borderLeft:'1px solid #ccd',
+        display:'flex',alignItems:'center',justifyContent:'center', cursor:'pointer',
+        background: processed ? 'transparent' : 'transparent'
+      }}>
+        <Label size={14} color="#555">✎</Label>
+      </div>
+    </div>
+  );
+};
+
+/* SHIPMENT BLOCK — shared meta + N items */
+const Shipment = ({ shipDate, arrDate, driver, tk, status, comment, items }) => {
+  const planned = status === 'Запланировано';
+  const planLook = status === 'План';
+  const metaW = 360;
+  const openDriver = (e) => {
+    e.stopPropagation();
+    if (window.__openDriverCard) window.__openDriverCard(driver);
+  };
+  return (
+    <div style={{
+      display:'flex',
+      borderBottom: '1.5px solid #c8c8c0',
+      background: planned
+        ? 'repeating-linear-gradient(-45deg,#fff,#fff 6px,#fff8e8 6px,#fff8e8 8px)'
+        : (planLook ? '#faf7fe' : '#fff'),
+      opacity: planLook ? 0.92 : 1,
+      position: 'relative',
+    }}>
+      {/* План — фиолетовая «полоска» слева, мягко отличающая запись */}
+      {planLook && (
+        <div style={{
+          position:'absolute', top:0, bottom:0, left:0, width:4,
+          background:'#7a4ec0'
+        }} />
+      )}
+      {/* LEFT — shared meta: dates · driver · TK · status in ONE row; comment below */}
+      <div style={{ width: metaW, padding: '4px 10px', paddingLeft: planLook ? 14 : 10, borderRight:'1.5px solid #aaa', display:'flex', flexDirection:'column', gap: 2, justifyContent:'center' }}>
+        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'nowrap' }}>
+          <Label size={13} bold color={planLook ? '#5530a0' : '#333'} style={{whiteSpace:'nowrap'}}>{shipDate}</Label>
+          <Label size={11} color="#bbb">→</Label>
+          <Label size={13} bold color={planLook ? '#5530a0' : '#1a6b3a'} style={{whiteSpace:'nowrap', marginRight:4}}>{arrDate}</Label>
+          <Label size={11} color="#555" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1, minWidth:0}}>
+            {planLook
+              ? <span style={{ color:'#888', fontStyle:'italic' }}>🕒 водитель ещё не назначен</span>
+              : <>🚚 <span
+                  onClick={openDriver}
+                  style={{ color:'#1a4a8a', textDecoration:'underline', textDecorationStyle:'dotted', cursor:'pointer' }}
+                  title="Открыть карточку водителя"
+                >{driver}</span> · <span style={{color:'#888'}}>{tk}</span></>
+            }
+          </Label>
+          <StatusChip status={status} />
+        </div>
+        {comment && (
+          <div style={{ display:'flex', gap:3, alignItems:'center' }}>
+            <Label size={10} color="#a06000">💬</Label>
+            <Label size={10} color="#a06000" style={{ fontStyle:'italic', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{comment}</Label>
+          </div>
+        )}
+      </div>
+      {/* RIGHT — items list */}
+      <div style={{ flex: 1 }}>
+        {items.map((it, i) => (
+          <ItemLine key={i} {...it} isFirst={i===0} isLast={i===items.length-1} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── DRIVER CARD MODAL — used in main table ─────────── */
+const DRIVERS = {
+  'Вихров П.':   { tk: 'ИП Фастов', phone: '+7 900 123-45-67', info: 'Volvo FH · К 245 ОР 77\nПаспорт 4512 №876342, выдан УФМС г. Москва\nСтаж: 12 лет · Опыт: рефрижератор, тент' },
+  'Мартыно В.':  { tk: 'ИП Рябов',  phone: '+7 901 234-56-78', info: 'MAN TGX · О 891 РТ 50\nПаспорт 4513 №129084\nЛюбит догрузы, гибкий график' },
+  'Кузнецов А.': { tk: 'ТК Авто',   phone: '+7 902 345-67-89', info: 'Scania R450 · Е 712 ВК 77\nТягач + полуприцеп 82 м³\nПаспорт 4514 №442910' },
+  'Ахмедов Р.':  { tk: 'ТК Авто',   phone: '+7 903 456-78-90', info: 'DAF XF · М 045 НА 50\nПаспорт 4515 №776218\nПо предзаказу, бочки/IBC' },
+  'Гриненко К.': { tk: 'ИП Кузн.',  phone: '+7 904 567-89-01', info: 'Renault T · А 318 СН 77\nПаспорт 4516 №334721\nИП Кузн., только томатная группа' },
+  'Шахматов':    { tk: 'ТК Авто',   phone: '+7 905 678-90-12', info: 'Iveco Stralis · Х 902 ЕМ 50\nПаспорт 4517 №118650\nЧасто работает с перцем/баклажанами' },
+};
+
+const DriverModal = ({ name, onClose }) => {
+  const d = DRIVERS[name] || { phone: '+7 — — —', info: 'Данные не заполнены' };
+  const [toast, setToast] = useState(null);
+  const flash = (msg) => { setToast(msg); setTimeout(() => setToast(null), 1400); };
+  const copyText = (txt, msg) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); ta.remove();
+      }
+      flash(msg);
+    } catch (e) { flash('Не удалось скопировать'); }
+  };
+  const all = `${name}\n${d.phone}\n${d.info}`;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:'absolute', inset:0, background:'rgba(20,20,20,0.45)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        zIndex:50, fontFamily:'Caveat'
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 380, background:'#fff',
+          border:'2px solid #333', borderRadius:4,
+          boxShadow:'4px 6px 0 rgba(0,0,0,0.18)',
+          overflow:'hidden'
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          background:'#2a2a2a', color:'#fff',
+          padding:'6px 12px', display:'flex', alignItems:'center', gap:8
+        }}>
+          <span style={{ fontSize:18 }}>👤</span>
+          <Label size={15} bold color="#fff">Карточка водителя</Label>
+          <div style={{ flex:1 }} />
+          <span
+            onClick={onClose}
+            style={{ cursor:'pointer', color:'#fff', fontSize:18, lineHeight:1 }}
+            title="Закрыть"
+          >✕</span>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:'10px 14px 4px' }}>
+          <Label size={11} color="#888" style={{ textTransform:'uppercase', letterSpacing:1 }}>ФИО</Label>
+          <div style={{ marginTop:2, marginBottom:8, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <Label size={18} bold color="#222">{name}</Label>
+            {d.tk && (
+              <Pill color="#e8e5df" size={11}>🚛 {d.tk}</Pill>
+            )}
+          </div>
+
+          <Label size={11} color="#888" style={{ textTransform:'uppercase', letterSpacing:1 }}>Телефон</Label>
+          <div style={{
+            marginTop:2, marginBottom:10, padding:'5px 8px',
+            background:'#f5f3ed', border:'1.5px solid #ccc', borderRadius:3,
+            display:'flex', alignItems:'center', gap:6
+          }}>
+            <span style={{ fontSize:14 }}>📞</span>
+            <Label size={15} bold color="#1a4a8a" style={{ fontFamily:'JetBrains Mono, monospace' }}>{d.phone}</Label>
+          </div>
+
+          <Label size={11} color="#888" style={{ textTransform:'uppercase', letterSpacing:1 }}>Инфо</Label>
+          <div style={{
+            marginTop:2, marginBottom:10, padding:'6px 10px',
+            background:'#fffbe8', border:'1.5px dashed #d4b878', borderRadius:3,
+            minHeight:80, whiteSpace:'pre-wrap'
+          }}>
+            <Label size={13} color="#444">{d.info}</Label>
+          </div>
+          <Label size={10} color="#999" style={{ fontStyle:'italic' }}>
+            Свободный текст: марка авто, госномер, паспортные данные и т.п.
+          </Label>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding:'8px 12px', background:'#f5f3ed',
+          borderTop:'1.5px solid #ccc',
+          display:'flex', gap:8, alignItems:'center'
+        }}>
+          <Box
+            onClick={() => copyText(d.phone, '📞 телефон скопирован')}
+            className="sk-gray"
+            style={{ padding:'5px 10px', cursor:'pointer', display:'flex', alignItems:'center', gap:5 }}
+          >
+            <Label size={13} bold>📋 Скопировать телефон</Label>
+          </Box>
+          <Box
+            onClick={() => copyText(all, '📋 всё скопировано')}
+            className="sk-gray"
+            style={{ padding:'5px 10px', cursor:'pointer', background:'#1a6b3a', borderColor:'#0d4020', display:'flex', alignItems:'center', gap:5 }}
+          >
+            <Label size={13} bold color="#fff">📋 Скопировать всё</Label>
+          </Box>
+          <div style={{ flex:1 }} />
+          {toast && (
+            <Label size={11} color="#1a6b3a" bold style={{ fontStyle:'italic' }}>{toast}</Label>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT A: Таблица-аккордеон ─────────── */
+const VariantA = () => {
+  const [week17open, setW17] = useState(true);
+  const [day21open, setD21] = useState(true);
+  const [day22open, setD22] = useState(true);
+  const [week16open, setW16] = useState(false);
+  const [hidePlanned, setHidePlanned] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+  // Local wrapper around <Shipment> that respects the "hide planned" toggle
+  // and the "Статус: X" filter chip. По умолчанию плановые ВИДНЫ (hidePlanned=false).
+  const Ship = (props) => {
+    if (hidePlanned && props.status === 'План') return null;
+    if (statusFilter !== 'all' && statusFilter !== props.status) return null;
+    return <Shipment {...props} />;
+  };
+  const [view, setView] = useState(() => {
+    try { return sessionStorage.getItem('wsm.mainView') || 'table'; } catch (e) { return 'table'; }
+  });
+  const setViewPersist = (v) => {
+    setView(v);
+    try { sessionStorage.setItem('wsm.mainView', v); } catch (e) {}
+  };
+  const [driverOpen, setDriverOpen] = useState(null);
+  const [qualityOpen, setQualityOpen] = useState(null);
+  React.useEffect(() => {
+    window.__openDriverCard = (name) => setDriverOpen(name);
+    window.__openQuality = (pos) => setQualityOpen(pos);
+    return () => {
+      if (window.__openDriverCard) delete window.__openDriverCard;
+      if (window.__openQuality) delete window.__openQuality;
+    };
+  }, []);
+  const metaW = 360;
+  const scrollRef = React.useRef(null);
+  const currentWeekRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (view !== 'table') return;
+    // Scroll current week into view on mount (no smooth behavior to avoid animation on load)
+    if (scrollRef.current && currentWeekRef.current) {
+      scrollRef.current.scrollTop = currentWeekRef.current.offsetTop - 4;
+    }
+    // Auto-hiding scrollbar: add class while scrolling, remove after inactivity
+    const el = scrollRef.current;
+    if (!el) return;
+    let t;
+    const onScroll = () => {
+      el.classList.add('is-scrolling');
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove('is-scrolling'), 900);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); el.removeEventListener('scroll', onScroll); };
+  }, [view]);
+
+  return (
+    <div style={{ padding: 12, fontFamily: 'Caveat', position:'relative' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Box className="sk-gray" style={{ padding: '5px 16px', cursor: 'pointer', display:'flex',alignItems:'center',gap:6, background:'#1a6b3a', borderColor:'#0d4020', minWidth:140 }}>
+          <span style={{fontSize:14, color:'#fff'}}>＋</span><Label size={14} bold color="#fff" style={{whiteSpace:'nowrap'}}>Отгрузка</Label>
+        </Box>
+        <div style={{ flex: 1 }} />
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🔍 Поиск</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⌕ Фильтры</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⚙ Колонки</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>↓ Excel</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🖨</Label></Box>
+        {/* Segmented control: Таблица / Heatmap / План */}
+        <div style={{
+          display:'inline-flex', border:'2px solid #333', borderRadius:3,
+          background:'#e8e5df', overflow:'hidden'
+        }}>
+          <div
+            onClick={() => setViewPersist('table')}
+            style={{
+              padding:'4px 12px', cursor:'pointer',
+              background: view === 'table' ? '#1a6b3a' : 'transparent',
+              borderRight:'2px solid #333',
+              display:'flex', alignItems:'center', gap:5
+            }}
+          >
+            <Label size={13} bold color={view === 'table' ? '#fff' : '#333'}>▤ Таблица</Label>
+          </div>
+          <div
+            onClick={() => setViewPersist('heatmap')}
+            style={{
+              padding:'4px 12px', cursor:'pointer',
+              background: view === 'heatmap' ? '#1a6b3a' : 'transparent',
+              borderRight:'2px solid #333',
+              display:'flex', alignItems:'center', gap:5
+            }}
+          >
+            <Label size={13} bold color={view === 'heatmap' ? '#fff' : '#333'}>▦ Heatmap</Label>
+          </div>
+          <div
+            onClick={() => setViewPersist('plan')}
+            style={{
+              padding:'4px 12px', cursor:'pointer',
+              background: view === 'plan' ? '#1a6b3a' : 'transparent',
+              display:'flex', alignItems:'center', gap:5
+            }}
+          >
+            <Label size={13} bold color={view === 'plan' ? '#fff' : '#333'}>◫ План</Label>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters bar */}
+      <div style={{ display:'flex', gap:6, marginBottom: 8, alignItems:'center', flexWrap:'wrap', padding:'6px 8px', background:'#f5f3ed', border:'1.5px solid #ccc', borderRadius:3 }}>
+        <Label size={13} bold color="#555" style={{marginRight:4}}>Фильтры:</Label>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer', background:'#1a6b3a', borderColor:'#0d4020' }}>
+          <Label size={12} color="#fff" bold>📅 17 неделя ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>🏢 Поставщик: все ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>🥒 Сырьё: все ▾</Label>
+        </Box>
+        <Box
+          onClick={() => {
+            const next = ['all','План','Запланировано','Отправлено','Прибыло'];
+            setStatusFilter(next[(next.indexOf(statusFilter) + 1) % next.length]);
+          }}
+          className="sk-gray"
+          style={{ padding:'3px 10px', cursor:'pointer', background: statusFilter !== 'all' ? '#e2d4f0' : undefined, borderColor: statusFilter !== 'all' ? '#5530a0' : undefined }}
+          title="Доступные значения: все · План · Запланировано · Отправлено · Прибыло"
+        >
+          <Label size={12}>◷ Статус: <b>{statusFilter === 'all' ? 'все' : statusFilter}</b> ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>☑ Переработка: все ▾</Label>
+        </Box>
+        {/* Скрыть плановые отгрузки — по умолчанию ВЫКЛ (плановые видны) */}
+        <Box
+          onClick={() => setHidePlanned(!hidePlanned)}
+          className="sk-gray"
+          style={{ padding:'3px 10px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, background: hidePlanned ? '#e2d4f0' : '#fff', borderColor: hidePlanned ? '#5530a0' : '#333' }}
+          title="По умолчанию выключен — плановые отгрузки видны в общей таблице"
+        >
+          <div style={{
+            width:13, height:13, border:'1.5px solid #333', borderRadius:2,
+            background: hidePlanned ? '#5530a0' : '#fff',
+            display:'flex', alignItems:'center', justifyContent:'center'
+          }}>
+            {hidePlanned && <span style={{ color:'#fff', fontSize:10, lineHeight:1, fontWeight:700 }}>✓</span>}
+          </div>
+          <Label size={12} color={hidePlanned ? '#5530a0' : '#333'} bold={hidePlanned}>Скрыть плановые</Label>
+        </Box>
+        <div style={{ flex:1 }} />
+        <Label size={11} color="#888" style={{fontStyle:'italic'}}>очистить все</Label>
+      </div>
+
+      {/* Table container */}
+      {view === 'table' && (
+      <div style={{ border: '2px solid #333', borderRadius: 3, overflow: 'hidden', background: '#fff' }}>
+        {/* Column header */}
+        <div style={{ display:'flex', background:'#2a2a2a', color:'#fff' }}>
+          <div style={{ width: metaW, padding:'5px 10px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff" style={{whiteSpace:'nowrap'}}>Отгр. → Пост. · Водитель · ТК · Статус</Label>
+          </div>
+          <div style={{ width: 4 }}/>
+          <div style={{ width: 102, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Сырьё</Label>
+          </div>
+          <div style={{ width: 88, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Вес, кг</Label>
+          </div>
+          <div style={{ width: 118, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Поставщик</Label>
+          </div>
+          <div style={{ width: 78, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Тара</Label>
+          </div>
+          <div style={{ flex: 1, minWidth: 110, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">☑ Переработка · № акта</Label>
+          </div>
+          <div style={{ width: 28, padding:'5px 0', textAlign:'center' }}>
+            <Label size={11} bold color="#fff">⚙</Label>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div ref={scrollRef} className="wsm-scroll" style={{ maxHeight: 560, overflowY: 'auto' }}>
+
+        {/* Past weeks (10–15) — all collapsed */}
+        {[
+          { n: 10, range: '3–8 марта', kg: 172400 },
+          { n: 11, range: '10–15 марта', kg: 188900 },
+          { n: 12, range: '17–22 марта', kg: 195600 },
+          { n: 13, range: '24–29 марта', kg: 210300 },
+          { n: 14, range: '31 мар– 5 апр', kg: 186700 },
+          { n: 15, range: '7–12 апр', kg: 203500 },
+        ].map(w => (
+          <div key={w.n} style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'5px 8px', background:'#6a6a6a', cursor:'pointer',
+            borderBottom:'1px solid #333'
+          }}>
+            <span style={{ color:'#fff', fontSize:16 }}>▸</span>
+            <Label size={14} bold color="#fff" style={{whiteSpace:'nowrap'}}>{w.n} неделя · {w.range}</Label>
+            <div style={{ flex:1 }} />
+            <Pill color="#3a3a3a" textColor="#ffd" size={11}>Σ {w.kg.toLocaleString()} кг</Pill>
+          </div>
+        ))}
+
+        {/* WEEK 16 — collapsed */}
+        <div
+          onClick={() => setW16(!week16open)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 8px', background: '#555', cursor: 'pointer',
+            borderBottom: '2px solid #333'
+          }}
+        >
+          <span style={{ color: '#fff', fontSize: 16 }}>{week16open ? '▾' : '▸'}</span>
+          <Label size={15} bold color="#fff" style={{whiteSpace:'nowrap'}}>16 неделя · 14–19 апр</Label>
+          <div style={{ flex: 1 }} />
+          <Pill color="#3a3a3a" textColor="#ccc" size={12}>6 дн.</Pill>
+          <Pill color="#3a3a3a" textColor="#ffd" size={12}>Σ 198 450 кг</Pill>
+        </div>
+
+        {/* WEEK 17 */}
+        <div ref={currentWeekRef} onClick={() => setW17(!week17open)} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 8px', background: '#1a6b3a', cursor: 'pointer',
+          borderBottom: '2px solid #333'
+        }}>
+          <span style={{ color: '#fff', fontSize: 16 }}>{week17open ? '▾' : '▸'}</span>
+          <Label size={15} bold color="#fff" style={{whiteSpace:'nowrap'}}>17 неделя · 21–26 апр</Label>
+          <div style={{ flex: 1 }} />
+          <Pill color="#12532c" textColor="#cff" size={12}>4/6 дн.</Pill>
+          <Pill color="#12532c" textColor="#ffd" size={12}>Σ 241 800 кг</Pill>
+        </div>
+
+        {week17open && <>
+          {/* Day 21 */}
+          <div onClick={() => setD21(!day21open)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 8px 4px 24px', background: '#e8f4ed',
+            borderBottom: '1px solid #ccc', cursor: 'pointer'
+          }}>
+            <span style={{ fontSize: 13 }}>{day21open ? '▾' : '▸'}</span>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>21 апр, пн</Label>
+            <div style={{ flex: 1 }} />
+            <Label size={12} color="#555" style={{whiteSpace:'nowrap'}}>4 маш · 7 поз · Σ 68 200 кг</Label>
+          </div>
+          {day21open && <>
+            {/* Shipment 1 — processed · оба (📊✓📎) */}
+            <Ship
+shipDate="19 апр" arrDate="21 апр"
+              driver="Вихров П." tk="ИП Фастов"
+              status="Отправлено"
+              items={[{
+                raw:'Огурцы', kg:18500, supplier:'Байрамов А.', tara:'ящик×420',
+                processed:true, actNumber:'А-0421/01',
+                quality:{ hasData:true, hasPdf:true,
+                  summary:{ payable:17800, pct:96, reject:300, nonStd:400 } }
+              }]}
+            />
+            {/* Shipment 2 — MIXED: 2 raws from 2 suppliers in one truck */}
+            <Ship
+shipDate="20 апр" arrDate="21 апр"
+              driver="Мартыно В." tk="ИП Рябов"
+              status="Отправлено"
+              comment="Догруз по пути"
+              items={[
+                /* данные качества внесены, но PDF ещё не приложен (📊✓) */
+                { raw:'Черри', kg:10000, supplier:'Цой К.Т.', tara:null,
+                  processed:true, actNumber:'А-0421/02',
+                  quality:{ hasData:true, hasPdf:false,
+                    summary:{ payable:9550, pct:96, reject:150, nonStd:300 } } },
+                /* прикреплён только PDF, структурированные данные не внесены (📎) */
+                { raw:'Томаты', kg:10000, supplier:'Ким Т.', tara:null,
+                  processed:true, actNumber:'А-0421/03',
+                  quality:{ hasData:false, hasPdf:true } },
+              ]}
+            />
+            {/* Shipment 3 — same supplier, 2 raws */}
+            <Ship
+shipDate="20 апр" arrDate="21 апр"
+              driver="Кузнецов А." tk="ТК Авто"
+              status="Отправлено"
+              items={[
+                /* акт оформлен, но качество ещё не внесли — нейтральная серая иконка (📊) */
+                { raw:'Патиссоны', kg:8536, supplier:'Генералов', tara:null,
+                  processed:true, actNumber:'А-0421/04',
+                  quality:{ hasData:false, hasPdf:false } },
+                /* оба — данные и PDF (📊✓📎) */
+                { raw:'Халапеньо', kg:12440, supplier:'Генералов', tara:'бочка×20',
+                  processed:true, actNumber:'А-0421/05',
+                  quality:{ hasData:true, hasPdf:true,
+                    summary:{ payable:11800, pct:95, reject:240, nonStd:400 } } },
+              ]}
+            />
+            {/* Shipment 4 — planned, not yet sent */}
+            <Ship
+shipDate="21 апр" arrDate="21 апр"
+              driver="Ахмедов Р." tk="ТК Авто"
+              status="Запланировано"
+              comment="Ожидаем подтв."
+              items={[{ raw:'Халапеньо', kg:8724, supplier:'Мищенко', tara:'бочка×14' }]}
+            />
+            {/* План-отгрузки — пока без водителя/машины, видны наравне с фактическими */}
+            <Ship
+shipDate="—" arrDate="21 апр"
+              driver="—" tk="—"
+              status="План"
+              comment="Из режима «План» · фермер: Генералов И.П."
+              items={[{ raw:'Огурцы', kg:12000, supplier:'Генералов И.П.', tara:null }]}
+            />
+            <Ship
+shipDate="—" arrDate="21 апр"
+              driver="—" tk="—"
+              status="План"
+              items={[{ raw:'Перец', kg:17000, supplier:'Петров В.В.', tara:null }]}
+            />
+            {/* Day subtotal */}
+            <div style={{
+              display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
+              padding:'4px 8px 4px 24px', background:'#f0f0c8',
+              borderBottom:'2px dashed #bbb', borderTop:'1px solid #ccc'
+            }}>
+              <Label size={13} bold color="#555" style={{whiteSpace:'nowrap'}}>Итого 21 апр:</Label>
+              <Pill color="#e8e8a0" size={12}>Σ 68 200 кг</Pill>
+              <Pill color={RAW_COLORS['Огурцы'].bg} size={11}>Огурцы 18 500</Pill>
+              <Pill color={RAW_COLORS['Черри'].bg} size={11}>Черри 10 000</Pill>
+              <Pill color={RAW_COLORS['Томаты'].bg} size={11}>Томаты 10 000</Pill>
+              <Pill color={RAW_COLORS['Патиссоны'].bg} size={11}>Патиссоны 8 536</Pill>
+              <Pill color={RAW_COLORS['Халапеньо'].bg} size={11}>Халапеньо 21 164</Pill>
+              <Pill color="#eee" size={11}>бочка: 34</Pill>
+              <Pill color="#eee" size={11}>ящик: 420</Pill>
+            </div>
+          </>}
+
+          {/* Day 22 */}
+          <div onClick={() => setD22(!day22open)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 8px 4px 24px', background: '#e8f4ed',
+            borderBottom: '1px solid #ccc', cursor: 'pointer'
+          }}>
+            <span style={{ fontSize: 13 }}>{day22open ? '▾' : '▸'}</span>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>22 апр, вт</Label>
+            <div style={{ flex: 1 }} />
+            <Label size={12} color="#555" style={{whiteSpace:'nowrap'}}>2 маш · Σ 39 350 кг</Label>
+          </div>
+          {day22open && <>
+            <Ship
+shipDate="22 апр" arrDate="22 апр"
+              driver="Гриненко К." tk="ИП Кузн."
+              status="Отправлено"
+              items={[{
+                raw:'Томаты', kg:19350, supplier:'Ким Т.', tara:null,
+                /* данные качества есть, PDF ещё нет (📊✓) */
+                processed:true, actNumber:'А-0422/01',
+                quality:{ hasData:true, hasPdf:false,
+                  summary:{ payable:18950, pct:98, reject:200, nonStd:200 } }
+              }]}
+            />
+            <Ship
+shipDate="21 апр" arrDate="22 апр"
+              driver="Шахматов" tk="ТК Авто"
+              status="Запланировано"
+              items={[{ raw:'Перец', kg:20000, supplier:'Генералов', tara:null }]}
+            />
+            {/* План-отгрузка на 22 апр */}
+            <Ship
+shipDate="—" arrDate="22 апр"
+              driver="—" tk="—"
+              status="План"
+              comment="Из режима «План» · фермер: Цой К.Т."
+              items={[{ raw:'Черри', kg:15000, supplier:'Цой К.Т.', tara:null }]}
+            />
+            <div style={{
+              display:'flex', alignItems:'center', gap:8,
+              padding:'4px 8px 4px 24px', background:'#f0f0c8',
+              borderBottom:'2px dashed #bbb', borderTop:'1px solid #ccc'
+            }}>
+              <Label size={13} bold color="#555" style={{whiteSpace:'nowrap'}}>Итого 22 апр:</Label>
+              <Pill color="#e8e8a0" size={12}>Σ 39 350 кг</Pill>
+              <Pill color={RAW_COLORS['Томаты'].bg} size={11}>Томаты 19 350</Pill>
+              <Pill color={RAW_COLORS['Перец'].bg} size={11}>Перец 20 000</Pill>
+            </div>
+          </>}
+
+          {/* Days 23-26 collapsed stubs */}
+          {['23 апреля, среда','24 апреля, четверг','25 апреля, пятница','26 апреля, суббота'].map((d, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 8px 4px 24px', background: '#f5faf7',
+              borderBottom: '1px solid #ccc', opacity: 0.7
+            }}>
+              <span style={{ fontSize: 13 }}>▸</span>
+              <Label size={14} color="#1a6b3a">{d}</Label>
+              <div style={{ flex: 1 }} />
+              <Label size={12} color="#888">нет данных</Label>
+            </div>
+          ))}
+
+          {/* Week subtotal */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+            padding:'6px 12px', background:'#d4ead9', borderTop:'2px solid #1a6b3a'
+          }}>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>Итого 17 нед.:</Label>
+            <Pill color="#b8dcc0" size={13}>Σ 241 800 кг</Pill>
+            <Pill color={RAW_COLORS['Огурцы'].bg} size={12}>Огурцы 38 200</Pill>
+            <Pill color={RAW_COLORS['Черри'].bg} size={12}>Черри 65 300</Pill>
+            <Pill color={RAW_COLORS['Томаты'].bg} size={12}>Томаты 58 100</Pill>
+            <Pill color="#b8dcc0" size={12}>Прочие 80 200</Pill>
+          </div>
+        </>}
+        </div>
+      </div>
+      )}
+
+      {/* Heatmap view — переиспользуем уже существующий сводный вид */}
+      {view === 'heatmap' && (
+        <div style={{ border:'2px solid #333', borderRadius:3, overflow:'hidden', background:'#fff' }}>
+          {window.PivotV2 ? <window.PivotV2 /> : (
+            <div style={{ padding:20, textAlign:'center' }}>
+              <Label size={13} color="#888">Heatmap загружается…</Label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* План view — двухуровневое недельное планирование */}
+      {view === 'plan' && (
+        window.PlanView ? <window.PlanView /> : (
+          <div style={{ padding:20, textAlign:'center', border:'2px solid #333', borderRadius:3, background:'#fff' }}>
+            <Label size={13} color="#888">План загружается…</Label>
+          </div>
+        )
+      )}
+
+      {/* Annotation */}
+      <div style={{ marginTop: 12, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">
+          ✦ Прошедшие недели свёрнуты · скролл при прокрутке · рядом с № акта — индикатор качества:
+          {' '}<span style={{ display:'inline-flex', alignItems:'center', gap:2, padding:'0 4px', background:'#ececec', border:'1.2px solid #999', borderRadius:9 }}>
+            <span style={{ fontSize:10 }}>📊</span></span> нет данных ·
+          {' '}<span style={{ display:'inline-flex', alignItems:'center', gap:1, padding:'0 4px', background:'#e4f1e0', border:'1.2px solid #1a6b3a', borderRadius:9 }}>
+            <span style={{ fontSize:10 }}>📊</span><span style={{ color:'#1a6b3a', fontWeight:700, fontSize:9 }}>✓</span></span> данные ·
+          {' '}<span style={{ display:'inline-flex', alignItems:'center', gap:1, padding:'0 4px', background:'#e0ebf6', border:'1.2px solid #1a4a8a', borderRadius:9 }}>
+            <span style={{ fontSize:10 }}>📎</span></span> только PDF ·
+          {' '}<span style={{ display:'inline-flex', alignItems:'center', gap:1, padding:'0 4px', background:'#e4f1e0', border:'1.2px solid #1a6b3a', borderRadius:9 }}>
+            <span style={{ fontSize:10 }}>📊</span><span style={{ color:'#1a6b3a', fontWeight:700, fontSize:9 }}>✓</span><span style={{ fontSize:10, marginLeft:1 }}>📎</span></span> оба ·
+          {' '}наведение — сводка, клик — модалка
+        </Label>
+      </div>
+
+      {/* Driver card modal */}
+      {driverOpen && <DriverModal name={driverOpen} onClose={() => setDriverOpen(null)} />}
+
+      {/* Quality modal */}
+      {qualityOpen && (
+        <div
+          onClick={() => setQualityOpen(null)}
+          style={{
+            position:'absolute', inset:0, background:'rgba(20,20,20,0.45)',
+            display:'flex', alignItems:'flex-start', justifyContent:'center',
+            paddingTop:30, zIndex:60, fontFamily:'Caveat', overflowY:'auto'
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            {window.QualityModal
+              ? <window.QualityModal data={(() => {
+                  const q = qualityOpen.quality || {};
+                  const fact = qualityOpen.kg || 0;
+                  const reject = q.summary?.reject ?? 0;
+                  const nonStd = q.summary?.nonStd ?? 0;
+                  return {
+                    raw: qualityOpen.raw,
+                    supplier: qualityOpen.supplier,
+                    driver: '—',
+                    date: '21 апр',
+                    posId: qualityOpen.actNumber?.replace(/[^0-9]/g,'') || '—',
+                    fact, reject, nonStd,
+                    nonStdPaid: false,
+                    nonStdPrice: 25,
+                    kalibers: q.hasData ? null : null,
+                    actNum: qualityOpen.actNumber,
+                    pdf: q.hasPdf ? { name: `akt-${qualityOpen.actNumber}.pdf`, size: '184 КБ' } : null,
+                    comment: q.hasData
+                      ? 'Данные качества внесены приёмщиком.'
+                      : (q.hasPdf
+                          ? 'PDF акта прикреплён — структурированные показатели ещё не внесены.'
+                          : 'Откройте форму и заполните показатели качества.'),
+                  };
+                })()} />
+              : <div style={{ padding:20, background:'#fff', borderRadius:4 }}>QualityModal не загружен</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─────────── VARIANT B: Карточки по дням (УДАЛЁН — оставлен в коде на случай возврата, не используется) ─────────── */
+const VariantB = () => {
+  const days = [
+    { date: '21 апр', day: 'Пн', total: 68200, items: [
+      { raw: 'Огурцы', supplier: 'Байрамов', driver: 'Вихров', kg: 18500, color: '#c2e8c2' },
+      { raw: 'Черри', supplier: 'Цой', driver: 'Мартыно', kg: 16200, color: '#ffd6c2' },
+      { raw: 'Патиссоны', supplier: 'Генералов', driver: 'Кузнецов', kg: 8536, color: '#c2d4ff' },
+      { raw: 'Халапеньо', supplier: 'Мищенко', driver: 'Ахмедов', kg: 12440, color: '#ffd6f0' },
+    ]},
+    { date: '22 апр', day: 'Вт', total: 52140, items: [
+      { raw: 'Томаты', supplier: 'Ким Т.', driver: 'Гриненко', kg: 19350, color: '#ffe0c2' },
+      { raw: 'Перец', supplier: 'Генералов', driver: 'Шахматов', kg: 20000, color: '#e8c2ff' },
+    ]},
+    { date: '23 апр', day: 'Ср', total: 0, items: [] },
+  ];
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+        <Box className="sk-gray" style={{ padding: '5px 12px' }}><Label size={14} bold>＋ Отгрузка</Label></Box>
+        <div style={{ flex: 1 }} />
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⚙ Вид</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>↓ Excel</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🖨</Label></Box>
+      </div>
+
+      {/* Week header */}
+      <div style={{
+        background: '#1a6b3a', padding: '6px 12px', borderRadius: '4px 4px 0 0',
+        display: 'flex', alignItems: 'center', gap: 12
+      }}>
+        <Label size={15} bold color="#fff">17 неделя · 21–26 апреля</Label>
+        <div style={{ flex: 1 }} />
+        <Label size={13} color="#aed6be">241 800 кг</Label>
+      </div>
+
+      {/* Day cards grid */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 1 }}>
+        {days.map((d, di) => (
+          <div key={di} style={{
+            flex: '1 1 200px', minWidth: 180, maxWidth: 240,
+            border: '2px solid #333', background: '#fff',
+            borderRadius: d.items.length === 0 ? 3 : 3,
+            opacity: d.items.length === 0 ? 0.5 : 1
+          }}>
+            <div style={{
+              background: '#444', padding: '4px 8px',
+              display: 'flex', alignItems: 'center', gap: 6
+            }}>
+              <Label size={14} bold color="#fff">{d.date}</Label>
+              <Label size={13} color="#aaa">{d.day}</Label>
+              <div style={{ flex: 1 }} />
+              <Label size={12} color="#ffd">{d.total > 0 ? d.total.toLocaleString() + ' кг' : '—'}</Label>
+            </div>
+            {d.items.map((item, ii) => (
+              <div key={ii} style={{
+                display: 'flex', alignItems: 'stretch',
+                borderBottom: '1px solid #e0e0e0'
+              }}>
+                <div style={{ width: 6, background: item.color, flexShrink: 0 }} />
+                <div style={{ padding: '5px 8px', flex: 1 }}>
+                  <Label size={13} bold>{item.raw}</Label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                    <Label size={11} color="#666">{item.supplier}</Label>
+                    <Label size={11} color="#888">{item.driver}</Label>
+                  </div>
+                  <Label size={12} color="#1a6b3a">{item.kg.toLocaleString()} кг</Label>
+                </div>
+              </div>
+            ))}
+            {d.items.length === 0 && (
+              <div style={{ padding: 12, textAlign: 'center' }}>
+                <Label size={13} color="#bbb" center>нет поставок</Label>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Карточный вид: легко читается по дням · цветовая метка по виду сырья · хорошо для мобильного</Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT C: Сводный дашборд + таблица ─────────── */
+const VariantC = () => (
+  <div style={{ padding: 12 }}>
+    {/* KPI row */}
+    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+      {[
+        { label: 'За неделю', val: '241 800 кг', color: '#d4e8c2' },
+        { label: 'Поставок', val: '18', color: '#c2d4e8' },
+        { label: 'Поставщиков', val: '6', color: '#e8d4c2' },
+        { label: 'Среднее/день', val: '40 300 кг', color: '#e8c2d4' },
+      ].map((k, i) => (
+        <div key={i} style={{
+          flex: 1, border: '2px solid #333', borderRadius: 4,
+          background: k.color, padding: '8px 10px'
+        }}>
+          <Label size={12} color="#555">{k.label}</Label>
+          <Label size={20} bold>{k.val}</Label>
+        </div>
+      ))}
+    </div>
+
+    {/* Mini chart placeholder */}
+    <div style={{
+      display: 'flex', gap: 8, marginBottom: 10
+    }}>
+      <div style={{
+        flex: 2, border: '2px solid #333', borderRadius: 4,
+        background: '#fafafa', padding: 10, height: 80
+      }}>
+        <Label size={12} color="#888">[ График объёмов по дням недели ]</Label>
+        <div style={{ display:'flex', gap:3, alignItems:'flex-end', height: 48, marginTop: 6 }}>
+          {[65, 48, 30, 0, 75, 82].map((v, i) => (
+            <div key={i} style={{
+              flex: 1, background: v > 0 ? '#1a6b3a' : '#ddd',
+              height: `${v}%`, borderRadius: '2px 2px 0 0', opacity: 0.8
+            }} />
+          ))}
+        </div>
+      </div>
+      <div style={{
+        flex: 1, border: '2px solid #333', borderRadius: 4,
+        background: '#fafafa', padding: 10, height: 80
+      }}>
+        <Label size={12} color="#888">[ Доля по сырью ]</Label>
+        <div style={{ display:'flex', gap:3, marginTop:8, flexWrap:'wrap' }}>
+          {[
+            {l:'Огурцы', c:'#c2e8c2'},
+            {l:'Черри', c:'#ffd6c2'},
+            {l:'Томаты', c:'#ffe0c2'},
+            {l:'Перец', c:'#e8c2ff'},
+          ].map((s,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:3 }}>
+              <div style={{ width:10, height:10, background:s.c, border:'1px solid #999', borderRadius:2 }}/>
+              <Label size={10} color="#555">{s.l}</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    {/* Compact table */}
+    <div style={{ border: '2px solid #333', borderRadius: 3, overflow: 'hidden' }}>
+      <Row cols={[
+        {text:'Дата пост.', w:80, bold:true}, {text:'Сырьё', w:90, bold:true},
+        {text:'Вес', w:70, bold:true}, {text:'Поставщик', w:100, bold:true},
+        {text:'Водитель', w:90, bold:true}
+      ]} bg="#2a2a2a" heights={28} bold border />
+      <div style={{ background:'#1a6b3a', padding:'3px 8px' }}>
+        <Label size={13} bold color="#fff">▾ 21 апреля · 68 200 кг</Label>
+      </div>
+      {[
+        ['Огурцы','18 500','Байрамов','Вихров','#c2e8c2'],
+        ['Черри','16 200','Цой','Мартыно','#ffd6c2'],
+        ['Патиссоны','8 536','Генералов','Кузнецов','#c2d4ff'],
+      ].map(([raw,kg,sup,drv,bg], i) => (
+        <div key={i} style={{ display:'flex', background: i%2===0?'#fafafa':'#fff', borderBottom:'1px solid #eee' }}>
+          <div style={{ width:6, background:bg }} />
+          <div style={{ width:74, padding:'3px 5px' }}><Label size={11} color="#777">21 апр</Label></div>
+          <div style={{ width:90, padding:'3px 5px' }}><Label size={12} bold>{raw}</Label></div>
+          <div style={{ width:70, padding:'3px 5px' }}><Label size={12}>{kg}</Label></div>
+          <div style={{ width:100, padding:'3px 5px' }}><Label size={12}>{sup}</Label></div>
+          <div style={{ width:90, padding:'3px 5px' }}><Label size={12}>{drv}</Label></div>
+        </div>
+      ))}
+    </div>
+
+    <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+      <Label size={13} color="#b06000">✦ Сводный дашборд: KPI сверху + мини-граф + таблица снизу · хорошо для руководителя</Label>
+    </div>
+  </div>
+);
+
+/* ─────────── VARIANT D: Справочники ─────────── */
+const VariantD = () => {
+  const [tab, setTab] = useState('vegetables');
+  const tabs = [
+    { id: 'vegetables', label: '🥒 Сырьё' },
+    { id: 'suppliers', label: '🏭 Поставщики' },
+    { id: 'transport', label: '🚛 ТК' },
+    { id: 'drivers', label: '👤 Водители' },
+  ];
+
+  const data = {
+    vegetables: [
+      { name: 'Огурцы', unit: 'кг', color: '#c2e8c2', active: true },
+      { name: 'Черри', unit: 'кг', color: '#ffd6c2', active: true },
+      { name: 'Томаты', unit: 'кг', color: '#ffe0c2', active: true },
+      { name: 'Патиссоны', unit: 'кг', color: '#c2d4ff', active: true },
+      { name: 'Халапеньо', unit: 'кг', color: '#ffd6f0', active: false },
+    ],
+    suppliers: [
+      { name: 'Байрамов А.', region: 'Краснодар', active: true },
+      { name: 'Цой К.Т.', region: 'Ставрополь', active: true },
+      { name: 'Генералов', region: 'Ростов', active: true },
+      { name: 'Мищенко', region: 'Краснодар', active: true },
+    ],
+    transport: [
+      { name: 'ИП Фастов', type: 'Рефрижератор', active: true },
+      { name: 'ИП Рябов', type: 'Тент', active: true },
+      { name: 'ТК Авто', type: 'Рефрижератор', active: true },
+    ],
+    drivers: [
+      { name: 'Вихров П.', phone: '+7 900 123-45', active: true },
+      { name: 'Мартыно В.', phone: '+7 901 234-56', active: true },
+      { name: 'Гриненко К.', phone: '+7 902 345-67', active: false },
+      { name: 'Ахмедов Р.', phone: '+7 903 456-78', active: true },
+    ],
+  };
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Sidebar + content layout */}
+      <div style={{ display: 'flex', gap: 0, border: '2px solid #333', borderRadius: 4, overflow:'hidden', background:'#fff' }}>
+        {/* Sidebar */}
+        <div style={{ width: 130, borderRight: '2px solid #333', background: '#f5f3ef' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #ccc' }}>
+            <Label size={14} bold>Справочники</Label>
+          </div>
+          {tabs.map(t => (
+            <div
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                padding: '8px 10px',
+                background: tab === t.id ? '#1a6b3a' : 'transparent',
+                cursor: 'pointer',
+                borderBottom: '1px solid #e0e0e0'
+              }}
+            >
+              <Label size={13} bold={tab === t.id} color={tab === t.id ? '#fff' : '#333'}>{t.label}</Label>
+            </div>
+          ))}
+          <div style={{ padding: 10, marginTop: 'auto', borderTop: '1px solid #ccc', marginTop: 20 }}>
+            <Label size={11} color="#888">Только для 👑 Админа</Label>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, padding: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Label size={15} bold>{tabs.find(t=>t.id===tab)?.label}</Label>
+            <div style={{ flex: 1 }} />
+            <Box className="sk-gray" style={{ padding: '3px 10px' }}>
+              <Label size={12} bold>＋ Добавить</Label>
+            </Box>
+          </div>
+          {/* List */}
+          {(data[tab] || []).map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '5px 6px',
+              background: i % 2 === 0 ? '#fafafa' : '#fff',
+              borderBottom: '1px solid #eee',
+              opacity: item.active ? 1 : 0.4
+            }}>
+              {item.color && <div style={{ width: 12, height: 12, background: item.color, border: '1px solid #aaa', borderRadius: 2 }} />}
+              <Label size={13} bold>{item.name}</Label>
+              <Label size={12} color="#888">{item.unit || item.region || item.type || item.phone}</Label>
+              <div style={{ flex: 1 }} />
+              {!item.active && <Pill color="#eee" textColor="#999" size={11}>архив</Pill>}
+              <Label size={12} color="#c00" style={{ cursor: 'pointer' }}>✏</Label>
+              <Label size={12} color="#c00" style={{ cursor: 'pointer' }}>🗑</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Справочник: боковая навигация · мягкое удаление (архив) · редактирование только у Админа</Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT E: Модалка добавления (мульти-позиции) ─────────── */
+const Field = ({ label, hint, value, placeholder, type, required, w }) => (
+  <div style={{ flex: w || 1, minWidth: 0 }}>
+    <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:2 }}>
+      <Label size={12} bold>{label}{required && <span style={{color:'#c33'}}> *</span>}</Label>
+      {hint && <Label size={10} color="#999">{hint}</Label>}
+    </div>
+    <div style={{
+      border: '1.5px solid #999', borderRadius: 3,
+      padding: '3px 7px', background: '#fff',
+      display:'flex', alignItems:'center', justifyContent:'space-between', minHeight: 22
+    }}>
+      {value
+        ? <Label size={12} bold>{value}</Label>
+        : <Label size={11} color="#bbb">{placeholder || (type === 'select' ? 'Выбрать...' : type === 'date' ? 'дд.мм' : '—')}</Label>}
+      {type === 'select' && <Label size={11} color="#999">▾</Label>}
+    </div>
+  </div>
+);
+
+const VariantE = () => {
+  const items = [
+    { raw:'Огурцы', kg:'10 000', supplier:'Байрамов А.', tara:'—' },
+    { raw:'Томаты', kg:'10 000', supplier:'Цой К.Т.', tara:'—' },
+    { raw:'Халапеньо', kg:'1 200', supplier:'Мищенко', tara:'бочка × 6' },
+  ];
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Modal */}
+      <div style={{
+        border: '2.5px solid #333', borderRadius: 6, background: '#fff',
+        boxShadow: '4px 4px 0 #33333340'
+      }}>
+        <div style={{
+          background: '#1a6b3a', padding: '8px 14px',
+          display: 'flex', alignItems: 'center', gap: 8
+        }}>
+          <Label size={16} bold color="#fff">Новая отгрузка</Label>
+          <Pill color="#fff0c8" textColor="#a06000" size={11}>⏷ Запланировано</Pill>
+          <div style={{ flex: 1 }} />
+          <Label size={18} color="#aed6be" style={{ cursor: 'pointer' }}>✕</Label>
+        </div>
+
+        <div style={{ padding: '10px 14px' }}>
+          {/* Section 1: Общая инфо (едина для всей машины) */}
+          <div style={{ background:'#f5f3ef', padding:'8px 10px', border:'1px dashed #bbb', borderRadius:3, marginBottom:10 }}>
+            <Label size={11} color="#666" style={{ marginBottom:6, textTransform:'uppercase', letterSpacing:0.5 }}>— Общая информация (1 машина) —</Label>
+            <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+              <Field label="Дата отгрузки" hint="у поставщика" type="date" required value="20 апр" />
+              <Field label="Дата поступления" hint="на завод" type="date" required value="21 апр" />
+            </div>
+            <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+              <Field label="Водитель" type="select" required value="Мартыно В." />
+              <Field label="Транспортная компания" hint="авто по водителю" type="select" value="ИП Рябов" />
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+              <div style={{ flex:1 }}>
+                <Label size={12} bold style={{ marginBottom:2 }}>Статус</Label>
+                <div style={{ display:'flex', gap:4 }}>
+                  <Pill color="#fff0c8" textColor="#a06000" size={11}>● ⏷ Запланировано</Pill>
+                  <Pill color="#f5f3ef" textColor="#999" size={11}>○ ✓ Отправлено</Pill>
+                </div>
+              </div>
+              <div style={{ flex:1 }}>
+                <Label size={12} bold style={{ marginBottom:2 }}>Комментарий <span style={{color:'#999', fontWeight:400, fontSize:10}}>опц.</span></Label>
+                <div style={{ border:'1.5px solid #999', borderRadius:3, padding:'3px 7px', background:'#fff', minHeight:22 }}>
+                  <Label size={11} color="#a06000" style={{ fontStyle:'italic' }}>Догруз по пути, Армавир</Label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Позиции (items) */}
+          <div style={{ marginBottom: 6, display:'flex', alignItems:'baseline', gap:6 }}>
+            <Label size={13} bold>Позиции в машине</Label>
+            <Label size={11} color="#888">можно добавить несколько — разные поставщики и/или сырьё</Label>
+          </div>
+
+          {/* Items list */}
+          <div style={{ border:'1.5px solid #333', borderRadius:3, overflow:'hidden' }}>
+            {/* Header */}
+            <div style={{ display:'flex', background:'#2a2a2a', color:'#fff', padding:'3px 6px', gap:6 }}>
+              <Label size={11} bold color="#fff" style={{ width:16 }}>№</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.3 }}>Сырьё *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1 }}>Вес, кг *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.5 }}>Поставщик *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.3 }}>Тара <span style={{fontWeight:400,opacity:0.7}}>опц.</span></Label>
+              <Label size={11} bold color="#fff" style={{ width:20 }}></Label>
+            </div>
+            {items.map((it, i) => {
+              const c = RAW_COLORS[it.raw] || { bg:'#eee', dot:'#999' };
+              return (
+                <div key={i} style={{
+                  display:'flex', gap:6, padding:'4px 6px',
+                  background: c.bg + '55', borderBottom:'1px dashed #ccc', alignItems:'center'
+                }}>
+                  <Label size={11} color="#888" style={{ width:16 }}>{i+1}</Label>
+                  <div style={{ flex:1.3, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff', display:'flex', alignItems:'center', gap:4 }}>
+                    <div style={{ width:8, height:8, borderRadius:8, background:c.dot }}/>
+                    <Label size={12} bold>{it.raw}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <div style={{ flex:1, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff' }}>
+                    <Label size={12}>{it.kg}</Label>
+                  </div>
+                  <div style={{ flex:1.5, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff', display:'flex', alignItems:'center' }}>
+                    <Label size={12}>{it.supplier}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <div style={{ flex:1.3, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background: it.tara === '—' ? '#f5f3ef' : '#fff', display:'flex', alignItems:'center' }}>
+                    <Label size={12} color={it.tara === '—' ? '#bbb' : '#333'}>{it.tara}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <Label size={14} color="#c33" style={{ width:20, textAlign:'center', cursor:'pointer' }}>✕</Label>
+                </div>
+              );
+            })}
+            {/* Add row */}
+            <div style={{ padding:'5px 8px', background:'#f0f0c8', cursor:'pointer', borderTop:'1px solid #bbb' }}>
+              <Label size={12} bold color="#1a6b3a">＋ Добавить позицию (ещё сырьё / ещё поставщик)</Label>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{ marginTop:8, padding:'5px 10px', background:'#eef6ee', borderRadius:3, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            <Label size={12} bold color="#1a6b3a">Итого в машине:</Label>
+            <Pill color="#fff" size={11}>Σ 21 200 кг</Pill>
+            <Pill color="#fff" size={11}>3 позиции</Pill>
+            <Pill color="#fff" size={11}>2 поставщика</Pill>
+            <Pill color="#fff" size={11}>бочка: 6</Pill>
+          </div>
+
+          <HR my={10} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Box className="sk-gray" style={{ padding: '5px 16px', cursor: 'pointer' }}>
+              <Label size={13}>Отмена</Label>
+            </Box>
+            <div style={{
+              background: '#eee', border: '2px solid #333',
+              padding: '5px 16px', borderRadius: 3, cursor: 'pointer'
+            }}>
+              <Label size={13}>Сохранить как запланировано</Label>
+            </div>
+            <div style={{
+              background: '#1a6b3a', border: '2px solid #333',
+              padding: '5px 16px', borderRadius: 3, cursor: 'pointer'
+            }}>
+              <Label size={13} bold color="#fff">✓ Сохранить и отправить</Label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Одна машина = одна отгрузка с N позициями · общая шапка (водитель/ТК/даты/статус) · позиции с разным сырьём и поставщиками · опц. тара и комментарий</Label>
+      </div>
+    </div>
+  );
+};
+
+/* Expose atoms to other Babel scripts (pivot, mobile) */
+Object.assign(window, { Box, Label, Pill, HR, Row, RAW_COLORS, StatusChip });
+
+/* ─────────── NAV SHELL: sidebar + role switcher ─────────── */
+const NAV = [
+  {
+    id: 'shipments',
+    icon: '📋',
+    label: 'Отгрузки',
+    user: true,
+  },
+  {
+    id: 'logistics',
+    icon: '📦',
+    label: 'Логистика материалов',
+    user: false,
+    children: [
+      { id: 'tara-dash',    label: 'Тара · Дашборд',                   user: false },
+      { id: 'tara-out',     label: 'Тара · Отправки на поставщика',    user: false },
+      { id: 'tara-scrap',   label: 'Тара · Списание лома',             user: false },
+      { id: 'tara-move',    label: 'Тара · Передачи между поставщ.',   user: false },
+      { id: 'tara-log',     label: 'Тара · Журнал движений',           user: false },
+      { id: 'ingredients',  label: 'Ингредиенты',                       user: false },
+    ],
+  },
+  { id: 'contracts', icon: '📄', label: 'Контракты', user: false },
+  { id: 'analytics', icon: '📊', label: 'Аналитика', user: false },
+  { id: 'notifications', icon: '🔔', label: 'Уведомления', user: false },
+  {
+    id: 'refs',
+    icon: '📚',
+    label: 'Справочники',
+    user: false, // section header itself isn't user-targeted, but Drivers child is
+    children: [
+      { id: 'ref-raw',      label: 'Сырьё',         user: false },
+      { id: 'ref-suppl',    label: 'Поставщики',    user: false },
+      { id: 'ref-tk',       label: 'ТК',            user: false },
+      { id: 'ref-drivers',  label: 'Водители',      user: true  },
+      { id: 'ref-tara',     label: 'Виды тары',     user: false },
+      { id: 'ref-ingr',     label: 'Ингредиенты',   user: false },
+      { id: 'ref-seasons',  label: 'Сезоны',        user: false },
+    ],
+  },
+  { id: 'settings', icon: '⚙', label: 'Настройки', user: false },
+];
+
+const SidebarItem = ({ icon, label, active, disabled, collapsed, hasChildren, expanded, onClick, indent = 0, isChild = false }) => {
+  const bg = active ? '#1a6b3a' : 'transparent';
+  const fg = disabled ? '#aaa' : (active ? '#fff' : '#e8e5df');
+  return (
+    <div
+      onClick={disabled ? undefined : onClick}
+      title={collapsed ? label : undefined}
+      style={{
+        display:'flex', alignItems:'center', gap:8,
+        padding: isChild ? '3px 10px 3px 0' : '6px 10px',
+        paddingLeft: collapsed ? 0 : (10 + indent),
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        background: bg,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.55 : 1,
+        borderLeft: active ? '3px solid #7fd99c' : '3px solid transparent',
+        fontFamily:'Caveat',
+      }}
+    >
+      {icon && <span style={{ fontSize: 16, width: 18, textAlign:'center', filter: disabled ? 'grayscale(1)' : 'none' }}>{icon}</span>}
+      {!collapsed && (
+        <>
+          <Label size={isChild ? 12 : 14} bold={!isChild} color={fg} style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1 }}>
+            {isChild ? '· ' + label : label}
+          </Label>
+          {hasChildren && (
+            <span style={{ color: fg, fontSize: 12 }}>{expanded ? '▾' : '▸'}</span>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ─────────── NOTIFICATIONS DATA ─────────── */
+const NOTIF_TYPE_BG = {
+  alert:    '#ffd6c2',
+  tara:     '#d4e8c2',
+  truck:    '#c2d4e8',
+  quality:  '#fff4a8',
+  contract: '#e8d4c2',
+};
+const NOTIF_TYPE_BORDER = {
+  alert:    '#c24a28',
+  tara:     '#4a8f2a',
+  truck:    '#1a4a8a',
+  quality:  '#c49a00',
+  contract: '#a06030',
+};
+
+const NOTIFICATIONS = {
+  action: [
+    { type:'alert',   icon:'⚠',  title:'Превышение брака',          desc:'Цой К.Т. · Черри · акт А-0421/02 — брак 4,3%', time:'15 мин назад', unread:true },
+    { type:'tara',    icon:'📦', title:'Низкий остаток тары',        desc:'Бочка 200 л на Заводе — осталось 14 шт',       time:'1 ч назад',    unread:true },
+    { type:'quality', icon:'📊', title:'Качество не внесено',        desc:'А-0421/03 · Томаты · Ким Т. — 2 дня без данных', time:'2 ч назад',    unread:true },
+  ],
+  info: [
+    { type:'truck',    icon:'🚛', title:'Машина прибыла',            desc:'Вихров П. · 18 500 кг огурцов · Байрамов',     time:'30 мин назад', unread:true },
+    { type:'contract', icon:'📑', title:'Контракт подписан',          desc:'Генералов · сезон 2026 · 320 т',               time:'4 ч назад',    unread:true },
+  ],
+};
+
+const NotificationItem = ({ n }) => (
+  <div style={{
+    display:'flex', alignItems:'flex-start', gap:8,
+    padding:'8px 12px 8px 18px', borderBottom:'1px dashed #ddd',
+    background: n.unread ? '#fffbe8' : '#fff',
+    position:'relative', cursor:'pointer'
+  }}>
+    {n.unread && (
+      <div style={{
+        position:'absolute', left:6, top:18,
+        width:7, height:7, borderRadius:7,
+        background:'#d33030', border:'1px solid #8a1010'
+      }} />
+    )}
+    <div style={{
+      width:30, height:30, borderRadius:'50%',
+      background: NOTIF_TYPE_BG[n.type],
+      border:`1.5px solid ${NOTIF_TYPE_BORDER[n.type]}`,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      flexShrink:0
+    }}>
+      <span style={{ fontSize:14, lineHeight:1 }}>{n.icon}</span>
+    </div>
+    <div style={{ flex:1, minWidth:0 }}>
+      <Label size={13} bold color="#222" style={{ lineHeight:1.15 }}>{n.title}</Label>
+      <Label size={12} color="#666" style={{ marginTop:1, lineHeight:1.2 }}>{n.desc}</Label>
+      <Label size={10} color="#999" style={{ marginTop:2, fontStyle:'italic' }}>{n.time}</Label>
+    </div>
+  </div>
+);
+
+const NotificationsPopover = ({ tab, setTab, onClose }) => {
+  const list = tab === 'action' ? NOTIFICATIONS.action : NOTIFICATIONS.info;
+  return (
+    <div style={{
+      position:'absolute', top:'calc(100% + 8px)', right:0,
+      width: 380, background:'#fff', color:'#222',
+      border:'2px solid #333', borderRadius:4,
+      boxShadow:'4px 6px 0 rgba(0,0,0,0.25)',
+      zIndex: 200, fontFamily:'Caveat',
+    }}>
+      {/* Arrow */}
+      <div style={{
+        position:'absolute', top:-9, right:12,
+        width:0, height:0,
+        borderLeft:'8px solid transparent',
+        borderRight:'8px solid transparent',
+        borderBottom:'9px solid #333'
+      }} />
+      <div style={{
+        position:'absolute', top:-6, right:14,
+        width:0, height:0,
+        borderLeft:'6px solid transparent',
+        borderRight:'6px solid transparent',
+        borderBottom:'7px solid #fff'
+      }} />
+
+      {/* Header */}
+      <div style={{
+        padding:'7px 12px', borderBottom:'1.5px solid #333',
+        display:'flex', alignItems:'center', gap:8,
+        background:'#f5f3ed'
+      }}>
+        <span style={{ fontSize:15 }}>🔔</span>
+        <Label size={15} bold color="#222">Уведомления</Label>
+        <Pill color="#d33030" textColor="#fff" size={10}>5 новых</Pill>
+        <div style={{ flex:1 }} />
+        <Label size={11} color="#1a4a8a" style={{ cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted' }}>
+          ✓ Прочитать всё
+        </Label>
+        <span
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          style={{ cursor:'pointer', color:'#555', fontSize:16, lineHeight:1, marginLeft:6 }}
+          title="Закрыть"
+        >✕</span>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', borderBottom:'1.5px solid #ccc', background:'#fafafa' }}>
+        <div
+          onClick={() => setTab('action')}
+          style={{
+            flex:1, padding:'6px 10px', cursor:'pointer',
+            background: tab==='action' ? '#fff' : 'transparent',
+            borderBottom: tab==='action' ? '2px solid #d33030' : '2px solid transparent',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:6
+          }}
+        >
+          <Label size={13} bold color={tab==='action' ? '#d33030' : '#666'}>Требуют действия</Label>
+          <Pill color={tab==='action' ? '#d33030' : '#bbb'} textColor="#fff" size={10}>3</Pill>
+        </div>
+        <div
+          onClick={() => setTab('info')}
+          style={{
+            flex:1, padding:'6px 10px', cursor:'pointer',
+            background: tab==='info' ? '#fff' : 'transparent',
+            borderBottom: tab==='info' ? '2px solid #1a4a8a' : '2px solid transparent',
+            display:'flex', alignItems:'center', justifyContent:'center', gap:6
+          }}
+        >
+          <Label size={13} bold color={tab==='info' ? '#1a4a8a' : '#666'}>Информационные</Label>
+          <Pill color={tab==='info' ? '#1a4a8a' : '#bbb'} textColor="#fff" size={10}>2</Pill>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="wsm-scroll" style={{ maxHeight: 360, overflowY:'auto' }}>
+        {list.map((n, i) => <NotificationItem key={i} n={n} />)}
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        padding:'8px 12px', borderTop:'1.5px solid #ccc',
+        background:'#f5f3ed', textAlign:'center', cursor:'pointer'
+      }}>
+        <Label size={13} bold color="#1a4a8a" style={{ textDecoration:'underline', textDecorationStyle:'dotted' }}>
+          Все уведомления →
+        </Label>
+      </div>
+    </div>
+  );
+};
+
+const MainShell = ({ children }) => {
+  const [role, setRole] = useState('admin'); // 'admin' | 'user'
+  const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState({ logistics: true, refs: true });
+  const [active, setActive] = useState('shipments');
+  const [notifOpen, setNotifOpen] = useState(true); // open by default for demo
+  const [notifTab, setNotifTab] = useState('action');
+
+  const isUser = role === 'user';
+  const sideW = collapsed ? 56 : 230;
+
+  const visible = (item) => {
+    if (!isUser) return { disabled: false };
+    if (item.user) return { disabled: false };
+    return { disabled: true };
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', fontFamily:'Caveat', background:'#f0ede8' }}>
+      {/* Top bar with role switcher */}
+      <div style={{
+        display:'flex', alignItems:'center', gap:10, padding:'6px 12px',
+        background:'#1f1f1f', color:'#fff', borderBottom:'2px solid #000'
+      }}>
+        <span
+          onClick={() => setCollapsed(!collapsed)}
+          style={{ cursor:'pointer', fontSize:18, padding:'0 4px' }}
+          title={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
+        >☰</span>
+        <Label size={15} bold color="#fff">Учёт отгрузок · WSM</Label>
+        <Pill color="#3a3a3a" textColor="#aed6be" size={11}>demo</Pill>
+        <div style={{ flex:1 }} />
+        <Label size={11} color="#888" style={{ fontStyle:'italic' }}>демо-переключатель роли:</Label>
+        <div style={{
+          display:'inline-flex', border:'2px solid #555', borderRadius:3,
+          background:'#2a2a2a', overflow:'hidden'
+        }}>
+          <div
+            onClick={() => setRole('admin')}
+            style={{
+              padding:'3px 12px', cursor:'pointer',
+              background: role === 'admin' ? '#1a6b3a' : 'transparent',
+              borderRight:'2px solid #555', display:'flex', alignItems:'center', gap:5
+            }}
+          >
+            <Label size={13} bold color={role === 'admin' ? '#fff' : '#ccc'}>👑 Админ</Label>
+          </div>
+          <div
+            onClick={() => setRole('user')}
+            style={{
+              padding:'3px 12px', cursor:'pointer',
+              background: role === 'user' ? '#1a6b3a' : 'transparent',
+              display:'flex', alignItems:'center', gap:5
+            }}
+          >
+            <Label size={13} bold color={role === 'user' ? '#fff' : '#ccc'}>👤 Пользователь</Label>
+          </div>
+        </div>
+
+        {/* 🔔 Notification bell — shown OPEN by default for demo */}
+        <div style={{ position:'relative', marginLeft:6 }}>
+          <div
+            onClick={() => setNotifOpen(!notifOpen)}
+            title="Уведомления"
+            style={{
+              cursor:'pointer', position:'relative',
+              width:32, height:32, borderRadius:3,
+              border:`2px solid ${notifOpen ? '#7fd99c' : '#555'}`,
+              background: notifOpen ? '#1a6b3a' : '#2a2a2a',
+              display:'flex', alignItems:'center', justifyContent:'center'
+            }}
+          >
+            <span style={{ fontSize:16, lineHeight:1 }}>🔔</span>
+            <div style={{
+              position:'absolute', top:-6, right:-6,
+              minWidth:18, height:18, padding:'0 4px',
+              borderRadius:9, background:'#d33030',
+              color:'#fff', fontSize:11, fontWeight:700,
+              fontFamily:'JetBrains Mono, monospace',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              border:'1.5px solid #1f1f1f', lineHeight:1
+            }}>5</div>
+          </div>
+          {notifOpen && (
+            <NotificationsPopover
+              tab={notifTab}
+              setTab={setNotifTab}
+              onClose={() => setNotifOpen(false)}
+            />
+          )}
+        </div>
+
+        <div style={{
+          width:28, height:28, borderRadius:'50%', background:'#444',
+          display:'flex', alignItems:'center', justifyContent:'center', marginLeft:6
+        }}>
+          <Label size={13} bold color="#fff">{isUser ? 'И' : 'А'}</Label>
+        </div>
+      </div>
+
+      {/* Body: sidebar + content */}
+      <div style={{ display:'flex', flex:1, minHeight:0 }}>
+        {/* Sidebar */}
+        <div style={{
+          width: sideW, flexShrink:0, transition:'width 0.15s ease',
+          background:'#2a2a2a', color:'#e8e5df',
+          borderRight:'2px solid #000',
+          display:'flex', flexDirection:'column'
+        }}>
+          <div style={{ flex:1, overflowY:'auto', padding:'6px 0' }}>
+            {NAV.map(item => {
+              const v = visible(item);
+              const childUserAllowed = item.children?.some(c => c.user);
+              // Section is "disabled" only if itself non-user AND no child is user-accessible
+              const sectionDisabled = isUser && !item.user && !childUserAllowed;
+              const isActive = active === item.id;
+              return (
+                <div key={item.id}>
+                  <SidebarItem
+                    icon={item.icon}
+                    label={item.label}
+                    active={isActive}
+                    disabled={sectionDisabled}
+                    collapsed={collapsed}
+                    hasChildren={!!item.children}
+                    expanded={expanded[item.id]}
+                    onClick={() => {
+                      if (item.children) {
+                        setExpanded({ ...expanded, [item.id]: !expanded[item.id] });
+                      }
+                      setActive(item.id);
+                    }}
+                  />
+                  {!collapsed && item.children && expanded[item.id] && (
+                    <div style={{ background:'#222', paddingLeft: 26 }}>
+                      {item.children.map(ch => {
+                        const cd = isUser && !ch.user;
+                        return (
+                          <SidebarItem
+                            key={ch.id}
+                            isChild
+                            label={ch.label}
+                            active={active === ch.id}
+                            disabled={cd}
+                            collapsed={false}
+                            onClick={() => setActive(ch.id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {!collapsed && (
+            <div style={{ padding:'6px 10px', borderTop:'1px solid #444', background:'#1f1f1f' }}>
+              <Label size={10} color="#888" style={{ fontStyle:'italic' }}>
+                {isUser
+                  ? '👤 Пользователю доступны только Отгрузки и Водители'
+                  : '👑 Админу доступно всё'}
+              </Label>
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex:1, minWidth:0, overflow:'auto', background:'#f0ede8' }}>
+          {/* Breadcrumb-style stub for non-shipments selection */}
+          {active !== 'shipments' && (
+            <div style={{
+              padding:'40px 30px', display:'flex', flexDirection:'column',
+              alignItems:'center', justifyContent:'center', gap:10, height:'100%'
+            }}>
+              <Label size={20} bold color="#888">⬚ Раздел в работе</Label>
+              <Label size={14} color="#888" style={{ fontStyle:'italic' }}>
+                Здесь будет экран «{
+                  NAV.flatMap(n => n.children ? [n, ...n.children] : [n]).find(x => x.id === active)?.label
+                }»
+              </Label>
+              <Box className="sk-gray" style={{ padding:'4px 10px', cursor:'pointer', marginTop:8 }} onClick={() => setActive('shipments')}>
+                <Label size={12}>← Вернуться к Отгрузкам</Label>
+              </Box>
+            </div>
+          )}
+          {active === 'shipments' && children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── MAIN ─────────── */
+const App = () => {
+  const PV1 = window.PivotV1, PV2 = window.PivotV2, PV3 = window.PivotV3;
+  const MV1 = window.MobileV1, MV2 = window.MobileV2, MV3 = window.MobileV3;
+  const MDetail = window.MobileDetail, MForm = window.MobileForm;
+  return (
+    <DesignCanvas title="Учёт отгрузок — Вайрфреймы">
+      <DCSection id="shell" title="Каркас навигации (sidebar + роли)">
+        <DCArtboard id="shell-main" label="Главная в каркасе · переключатель Админ/Пользователь" width={1200} height={820}>
+          <MainShell>
+            <VariantA />
+          </MainShell>
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="main" title="Главная страница">
+        <DCArtboard id="a" label="A · Таблица-аккордеон" width={960} height={780}>
+          <VariantA />
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="plan" title="Главная · режим «План» (двухуровневое планирование поставок)">
+        <DCArtboard id="plan-current" label="2.1 · План недели · текущая (редактируемая)" width={1200} height={1180}>
+          {window.PlanView ? <window.PlanView initialWeekOffset={0} /> : null}
+        </DCArtboard>
+        <DCArtboard id="plan-next" label="2.2 · План недели · следующая (редактируемая)" width={1200} height={1180}>
+          {window.PlanView ? <window.PlanView initialWeekOffset={1} /> : null}
+        </DCArtboard>
+        <DCArtboard id="plan-archive" label="2.3 · План недели · архив (read-only)" width={1200} height={1180}>
+          {window.PlanView ? <window.PlanView initialWeekOffset={-1} /> : null}
+        </DCArtboard>
+        <DCArtboard id="plan-cell-open" label="2.4 · План недели · открыта детализация ячейки + модалка «Новая плановая отгрузка»" width={1200} height={1280}>
+          {window.PlanView ? <window.PlanView initialWeekOffset={0} initialOpenCell={{raw:'Огурцы', day:2}} initialModalOpen={true} /> : null}
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="pivot" title="Сводный вид: сырьё × дни недели">
+        <DCArtboard id="p2" label="P2 · Heatmap" width={780} height={480}>
+          {PV2 ? <PV2 /> : null}
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="mobile" title="Мобильный (Android) · цветной">
+        <DCArtboard id="m2" label="Список — цветной" width={400} height={820}>
+          {MV2 ? <MV2 /> : null}
+        </DCArtboard>
+        <DCArtboard id="md" label="Детали отгрузки" width={400} height={820}>
+          {MDetail ? <MDetail /> : null}
+        </DCArtboard>
+        <DCArtboard id="mf" label="Форма (аккордеон)" width={400} height={820}>
+          {MForm ? <MForm /> : null}
+        </DCArtboard>
+      </DCSection>
+      <DCSection id="aux" title="Вспомогательные экраны (десктоп)">
+        <DCArtboard id="d" label="D · Справочники" width={420} height={400}>
+          <VariantD />
+        </DCArtboard>
+        <DCArtboard id="e" label="E · Форма добавления (мульти-позиции)" width={720} height={680}>
+          <VariantE />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="contracts" title="Контракты (только Админ)">
+        <DCArtboard id="c-list" label="4.1 · Список контрактов" width={1280} height={720}>
+          {window.ContractsList ? <window.ContractsList /> : null}
+        </DCArtboard>
+        <DCArtboard id="c-form" label="4.2 · Форма контракта (модалка)" width={820} height={620}>
+          {window.ContractForm ? <window.ContractForm /> : null}
+        </DCArtboard>
+        <DCArtboard id="c-detail" label="4.3 · Карточка контракта · сравнение сезонов" width={1180} height={1020}>
+          {window.ContractDetail ? <window.ContractDetail /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="refs-extras" title="Справочники · доработки и новые сущности">
+        <DCArtboard id="ref-drv-admin" label="3.1 · Водители — расширенный (Админ)" width={1080} height={620}>
+          {window.DriversReference ? <window.DriversReference admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-drv-user" label="3.1 · Водители — просмотр (Пользователь)" width={1080} height={620}>
+          {window.DriversReference ? <window.DriversReference admin={false} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-drv-edit-new" label="3.1 · Форма «Новый водитель» (Админ)" width={560} height={500}>
+          <div style={{ padding:18, display:'flex', justifyContent:'center' }}>
+            {window.DriverEditForm ? <window.DriverEditForm driver={null} /> : null}
+          </div>
+        </DCArtboard>
+        <DCArtboard id="ref-drv-edit" label="3.1 · Форма редактирования водителя (Админ)" width={560} height={500}>
+          <div style={{ padding:18, display:'flex', justifyContent:'center' }}>
+            {window.DriverEditForm ? <window.DriverEditForm driver={{
+              fio:'Кобец Сергей Васильевич',
+              phone:'+7 927 119 61 51',
+              tk:'АвтоЛогист',
+              info:'DAF, В383НЕ_164, АН6222_64\nсерия: 63 05 №804684, выдан 30.03.2006\nОВД Екатериновского р-на Саратовской обл.'
+            }} /> : null}
+          </div>
+        </DCArtboard>
+        <DCArtboard id="ref-seasons" label="3.2 · Сезоны (Админ)" width={920} height={400}>
+          {window.SeasonsReference ? <window.SeasonsReference admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-tara" label="3.3 · Виды тары (Админ)" width={1020} height={620}>
+          {window.TaraReference ? <window.TaraReference admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-ingr" label="3.4 · Ингредиенты (Админ)" width={1020} height={560}>
+          {window.IngredientsReference ? <window.IngredientsReference admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-avg" label="3.5 · Поставщик · вкладка «Средний вес рейса»" width={1100} height={720}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-main" label="3.5.1 · Поставщик · «Основные данные» (Админ)" width={1100} height={760}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} defaultTab="main" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-contacts" label="3.5.2 · Поставщик · «Контакты» (Админ)" width={1100} height={760}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} defaultTab="contacts" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-contracts" label="3.5.3 · Поставщик · «Контракты» (Админ)" width={1100} height={620}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} defaultTab="contracts" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-history" label="3.5.4 · Поставщик · «История отгрузок» (Пользователь)" width={1180} height={780}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={false} defaultTab="history" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-tara" label="3.5.5 · Поставщик · «Тара» (Админ)" width={1240} height={720}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} defaultTab="tara" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-suppl-quality" label="3.5.6 · Поставщик · «Качество» (Админ)" width={1200} height={1120}>
+          {window.SuppliersWithAvg ? <window.SuppliersWithAvg admin={true} defaultTab="quality" /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-raw-admin" label="3.6 · Сырьё · карточки + блок «Параметры качества» (Админ)" width={1080} height={1180}>
+          {window.RawMaterialsCards ? <window.RawMaterialsCards admin={true} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-raw-user" label="3.6 · Сырьё · карточки + блок «Параметры качества» (Пользователь)" width={1080} height={1100}>
+          {window.RawMaterialsCards ? <window.RawMaterialsCards admin={false} /> : null}
+        </DCArtboard>
+        <DCArtboard id="ref-raw-q-zoom" label="3.6 · Блок «Параметры качества» — крупно (Огурцы)" width={920} height={520}>
+          {window.RawQualityBlockOnly ? <window.RawQualityBlockOnly admin={true} raw={window.__RAW_DEMO?.CUCUMBER} /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="quality-modal" title="Модалка «Качество приёмки» (вызов по 📊 рядом с № акта)">
+        <DCArtboard id="qm-demo" label="3.7 · Качество приёмки · два варианта (с калибрами / без)" width={1020} height={1180}>
+          {window.QualityModalDemo ? <window.QualityModalDemo /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="logistics" title="Логистика материалов · Тара и Ингредиенты (только Админ)">
+        <DCArtboard id="lg-dash" label="6.1 · Тара · Дашборд (Завод + поставщики, алерты)" width={1280} height={920}>
+          {window.TaraDashboard ? <window.TaraDashboard /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-out" label="6.2 · Тара · Отправки на поставщиков (мульти-позиции в одной машине)" width={1280} height={1320}>
+          {window.TaraOutbound ? <window.TaraOutbound /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-scrap" label="6.4 · Тара · Списание лома и утилизация" width={1280} height={1100}>
+          {window.TaraScrap ? <window.TaraScrap /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-trans" label="6.5 · Тара · Передачи между поставщиками" width={1280} height={520}>
+          {window.TaraTransfers ? <window.TaraTransfers /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-journal" label="6.6 · Тара · Журнал движений (Завод и Цой К.Т.)" width={1480} height={780}>
+          {window.TaraJournal ? <window.TaraJournal /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-inv" label="6.7 · Инвентаризация · корректировка остатка" width={1180} height={620}>
+          {window.TaraInventory ? <window.TaraInventory /> : null}
+        </DCArtboard>
+        <DCArtboard id="lg-ingr" label="6.8 · Ингредиенты · отдельный интерфейс" width={1320} height={1180}>
+          {window.Ingredients ? <window.Ingredients /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="analytics" title="Аналитика (только Админ)">
+        <DCArtboard id="an-main" label="5.1 · Аналитика · полный экран" width={1320} height={3080}>
+          {window.Analytics ? <window.Analytics /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="mobile-tara" title="Мобильный · Тара (7.1)">
+        <DCArtboard id="m-tara-main" label="7.1 · Тара — главный экран (Завод + поставщики, офлайн)" width={420} height={840}>
+          {window.MobileTara ? <window.MobileTara /> : null}
+        </DCArtboard>
+        <DCArtboard id="m-tara-send" label="7.1 · Форма «Отправить тару поставщику» (FAB)" width={420} height={840}>
+          {window.MobileTara ? <window.MobileTara initialSheet="send" /> : null}
+        </DCArtboard>
+        <DCArtboard id="m-tara-scrap" label="7.1 · Форма «Списать в лом / утилизация»" width={420} height={840}>
+          {window.MobileTara ? <window.MobileTara initialSheet="scrap" /> : null}
+        </DCArtboard>
+        <DCArtboard id="m-tara-adjust" label="7.1 · Форма «Корректировка остатка»" width={420} height={840}>
+          {window.MobileTara ? <window.MobileTara initialSheet="adjust" /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="mobile-analytics" title="Мобильный · Аналитика (7.2)">
+        <DCArtboard id="m-an-main" label="7.2 · KPI по сырью + графики (свёрнутые)" width={420} height={840}>
+          {window.MobileAnalytics ? <window.MobileAnalytics /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="notifications" title="Уведомления (только Админ)">
+        <DCArtboard id="nt-main" label="8.1 · Уведомления · полный экран (вкладки, фильтры, массовые действия)" width={1280} height={1180}>
+          {window.NotifPage ? <window.NotifPage /> : null}
+        </DCArtboard>
+        <DCArtboard id="nt-mobile" label="8.2 · Уведомления · мобильная адаптация" width={420} height={840}>
+          {window.NotifMobile ? <window.NotifMobile /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="settings" title="Настройки (только Админ)">
+        <DCArtboard id="set-alerts" label="10.1 · Настройки · Алерты и пороги" width={1100} height={620}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="alerts" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-tara" label="10.2 · Настройки · Тара" width={1100} height={520}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="tara" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-week" label="10.3 · Настройки · Рабочая неделя (календарь праздников)" width={1100} height={680}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="week" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-units" label="10.4 · Настройки · Единицы измерения" width={1100} height={620}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="units" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-users" label="10.5 · Настройки · Пользователи и роли" width={1180} height={620}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="users" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-backup" label="10.6 · Настройки · Резервное копирование и экспорт" width={1100} height={580}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="backup" /> : null}
+        </DCArtboard>
+        <DCArtboard id="set-about" label="10.7 · Настройки · О системе (changelog)" width={1100} height={780}>
+          {window.SettingsPage ? <window.SettingsPage initialSection="about" /> : null}
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="print" title="Печатные формы (открываются по 🖨 с применёнными фильтрами)">
+        <DCArtboard id="pr-registry" label="9.1 · Реестр отгрузок · A4 книжная (режим «Таблица»)" width={830} height={1175}>
+          {window.PrintRegistryFramed ? <window.PrintRegistryFramed /> : null}
+        </DCArtboard>
+        <DCArtboard id="pr-pivot" label="9.2 · Сводный отчёт · A4 альбомная (режим «Heatmap»)" width={1160} height={846}>
+          {window.PrintPivotFramed ? <window.PrintPivotFramed /> : null}
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+};
+
+/* Defer render so external Babel scripts (pivot, mobile) attach to window first */
+window.__renderApp = () => {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+};
+</script>
+<script type="text/babel" src="pivot-summary.jsx"></script>
+<script type="text/babel" src="mobile-list.jsx"></script>
+<script type="text/babel" src="mobile-detail-form.jsx"></script>
+<script type="text/babel" src="references-extras.jsx"></script>
+<script type="text/babel" src="supplier-card-tabs.jsx"></script>
+<script type="text/babel" src="raw-quality.jsx"></script>
+<script type="text/babel" src="quality-modal.jsx"></script>
+<script type="text/babel" src="contracts.jsx"></script>
+<script type="text/babel" src="analytics.jsx"></script>
+<script type="text/babel" src="logistics.jsx"></script>
+<script type="text/babel" src="mobile-tara-analytics.jsx"></script>
+<script type="text/babel" src="notifications.jsx"></script>
+<script type="text/babel" src="print-views.jsx"></script>
+<script type="text/babel" src="settings.jsx"></script>
+<script type="text/babel" src="plan-view.jsx"></script>
+<script type="text/babel">
+  window.__renderApp();
+</script>
+<div id="root"></div>
+</body>
+</html>

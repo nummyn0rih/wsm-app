@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wireframes — Учёт отгрузок</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f0ede8; font-family: 'Caveat', cursive; }
+
+  /* Sketch styles */
+  .sk { font-family: 'Caveat', cursive; }
+  .sk-box {
+    border: 2px solid #333;
+    border-radius: 3px;
+    background: #fff;
+    position: relative;
+  }
+  .sk-box::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: 2px;
+    border: 1px solid #aaa;
+    pointer-events: none;
+  }
+  .sk-gray { background: #e8e5df; }
+  .sk-stripe {
+    background: repeating-linear-gradient(
+      -45deg, #f5f3ef, #f5f3ef 4px, #e8e5df 4px, #e8e5df 8px
+    );
+  }
+  .sk-label {
+    font-family: 'Caveat', cursive;
+    font-size: 13px;
+    color: #666;
+    text-align: center;
+    padding: 4px;
+  }
+  .sk-accent { background: #d4e8c2; }
+  .sk-accent2 { background: #c2d4e8; }
+  .sk-accent3 { background: #e8d4c2; }
+  .sk-accent4 { background: #e8c2d4; }
+  .sk-week { background: #2a2a2a; color: #fff; }
+  .sk-day { background: #444; color: #fff; }
+  .sk-subtotal { background: #f0f0c8; border-top: 2px dashed #bbb; }
+
+  /* Auto-hiding overlay scrollbar */
+  .wsm-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.4s ease;
+  }
+  .wsm-scroll:hover,
+  .wsm-scroll.is-scrolling {
+    scrollbar-color: rgba(60,60,60,0.55) transparent;
+  }
+  .wsm-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+  .wsm-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .wsm-scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    transition: background 0.4s ease;
+  }
+  .wsm-scroll:hover::-webkit-scrollbar-thumb,
+  .wsm-scroll.is-scrolling::-webkit-scrollbar-thumb {
+    background: rgba(60,60,60,0.55);
+  }
+  .wsm-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(40,40,40,0.75);
+  }
+
+  .annotation {
+    font-family: 'Caveat', cursive;
+    font-size: 14px;
+    color: #e05a1a;
+    position: absolute;
+    pointer-events: none;
+  }
+  .arrow {
+    display: inline-block;
+    font-size: 18px;
+    color: #e05a1a;
+  }
+</style>
+</head>
+<body>
+<script type="text/babel">
+const { useState } = React;
+
+/* ─────────── REUSABLE SKETCH ATOMS ─────────── */
+
+const Box = ({ w, h, style, className = '', children, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`sk-box ${className}`}
+    style={{ width: w, height: h, overflow: 'hidden', ...style }}
+  >
+    {children}
+  </div>
+);
+
+const Label = ({ children, size = 13, color = '#555', bold, center, style = {} }) => (
+  <div style={{
+    fontFamily: 'Caveat, cursive',
+    fontSize: size,
+    color,
+    fontWeight: bold ? 700 : 400,
+    textAlign: center ? 'center' : 'left',
+    lineHeight: 1.2,
+    ...style
+  }}>
+    {children}
+  </div>
+);
+
+const Pill = ({ children, color = '#e8e5df', textColor = '#333', size = 12 }) => (
+  <div style={{
+    display: 'inline-flex', alignItems: 'center', padding: '1px 8px',
+    background: color, border: '1.5px solid #333', borderRadius: 20,
+    fontFamily: 'Caveat', fontSize: size, color: textColor,
+    whiteSpace: 'nowrap'
+  }}>
+    {children}
+  </div>
+);
+
+const HR = ({ dashed, color = '#bbb', my = 4 }) => (
+  <div style={{
+    borderTop: `1.5px ${dashed ? 'dashed' : 'solid'} ${color}`,
+    margin: `${my}px 0`
+  }} />
+);
+
+const Row = ({ cols, heights = 26, bg, bold, border }) => {
+  const colWidths = cols.map(c => c.w || 80);
+  return (
+    <div style={{
+      display: 'flex',
+      height: heights,
+      background: bg || 'transparent',
+      borderBottom: border ? '1px solid #ccc' : undefined
+    }}>
+      {cols.map((c, i) => (
+        <div key={i} style={{
+          width: colWidths[i],
+          flexShrink: 0,
+          borderRight: i < cols.length - 1 ? '1px solid #ccc' : undefined,
+          padding: '2px 5px',
+          display: 'flex',
+          alignItems: 'center',
+          overflow: 'hidden'
+        }}>
+          <span style={{
+            fontFamily: 'Caveat, cursive',
+            fontSize: c.size || 12,
+            color: c.color || (bold ? '#000' : '#333'),
+            fontWeight: bold || c.bold ? 700 : 400,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+            {c.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ─────────── COLOR MAP BY RAW MATERIAL ─────────── */
+const RAW_COLORS = {
+  'Огурцы':    { bg: '#d4eac2', dot: '#4a8f2a' },
+  'Черри':     { bg: '#ffd0c0', dot: '#c24a28' },
+  'Томаты':    { bg: '#ffe0b8', dot: '#c87020' },
+  'Патиссоны': { bg: '#fff4a8', dot: '#c49a00' },
+  'Халапеньо': { bg: '#c4dca8', dot: '#1e5020' },
+  'Перец':     { bg: '#f0d8c8', dot: 'linear-gradient(135deg,#c03030 0%,#c03030 50%,#3a8a2a 50%,#3a8a2a 100%)' },
+  'Баклажан':  { bg: '#d8c0e8', dot: '#6030a0' },
+};
+
+/* Status chip */
+const StatusChip = ({ status }) => {
+  if (status === 'Отправлено') {
+    return <Pill color="#c8e8c8" textColor="#1a6b3a" size={11}>✓ Отпр.</Pill>;
+  }
+  return <Pill color="#fff0c8" textColor="#a06000" size={11}>◷ Заплан.</Pill>;
+};
+
+/* ITEM LINE — one supplier+raw within a shipment */
+const ItemLine = ({ raw, kg, supplier, tara, processed, actNumber, isFirst, isLast, compact }) => {
+  const c = RAW_COLORS[raw] || { bg: '#eee', dot: '#999' };
+  const py = compact ? '1px 6px' : '2px 6px';
+  const minH = compact ? 20 : 24;
+  const rowBg = processed
+    ? 'repeating-linear-gradient(135deg,#ececec,#ececec 4px,#e0e0e0 4px,#e0e0e0 8px)'
+    : c.bg + '55';
+  const textDeco = processed ? 'line-through' : 'none';
+  const textCol  = processed ? '#666' : '#222';
+  return (
+    <div style={{
+      display:'flex', alignItems:'stretch',
+      background: rowBg,
+      borderTop: isFirst ? 'none' : '1px dashed #c8d0bd',
+      minHeight: minH
+    }}>
+      <div style={{ width: 4, background: c.dot, flexShrink: 0 }} />
+      {/* Сырьё */}
+      <div style={{ width: 102, padding: py, display:'flex',alignItems:'center',gap:4 }}>
+        <div style={{ width:8, height:8, borderRadius:8, background:c.dot, flexShrink:0 }} />
+        <Label size={12} bold color={textCol} style={{textDecoration:textDeco}}>{raw}</Label>
+      </div>
+      {/* Вес — inline editable look */}
+      <div style={{ width: 88, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        <div style={{ flex:1, border:'1px dashed #999', borderRadius:2, padding:'0 5px', background:processed?'#f0f0f0':'#fffdf2', display:'flex',alignItems:'center',gap:3 }}>
+          <Label size={12} bold color={textCol} style={{textDecoration:textDeco}}>{kg.toLocaleString()}</Label>
+          <div style={{flex:1}}/>
+          <Label size={9} color="#bbb">✎</Label>
+        </div>
+      </div>
+      {/* Поставщик */}
+      <div style={{ width: 118, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        <Label size={12} color={textCol} style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', textDecoration:textDeco}}>{supplier}</Label>
+      </div>
+      {/* Тара */}
+      <div style={{ width: 78, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center' }}>
+        {tara ? <Pill color="#fff" size={11}>{tara}</Pill> : <Label size={11} color="#bbb">—</Label>}
+      </div>
+      {/* Переработка: чекбокс + № акта — read-only */}
+      <div style={{ flex:1, minWidth: 110, padding: py, borderLeft:'1px solid #ccd', display:'flex',alignItems:'center', gap:5 }}>
+        <div style={{
+          width:14, height:14, border:'1.5px solid #333', borderRadius:2,
+          background: processed ? '#1a6b3a' : '#fff',
+          display:'flex',alignItems:'center',justifyContent:'center', flexShrink:0
+        }}>
+          {processed && <span style={{ color:'#fff', fontSize:10, lineHeight:1, fontWeight:700 }}>✓</span>}
+        </div>
+        <div style={{
+          flex:1, border:'1px dashed #aaa', borderRadius:2, padding:'0 5px',
+          background: processed ? '#e8f0e4' : '#fafafa',
+          minHeight: 16, display:'flex', alignItems:'center'
+        }}>
+          <Label size={11} color={processed ? '#1a6b3a' : '#bbb'} style={{fontFamily:'JetBrains Mono,monospace', fontSize:10, whiteSpace:'nowrap'}}>
+            {processed ? `№ ${actNumber}` : '№ акта'}
+          </Label>
+        </div>
+      </div>
+      {/* Редактировать */}
+      <div title="Редактировать" style={{
+        width: 28, borderLeft:'1px solid #ccd',
+        display:'flex',alignItems:'center',justifyContent:'center', cursor:'pointer',
+        background: processed ? 'transparent' : 'transparent'
+      }}>
+        <Label size={14} color="#555">✎</Label>
+      </div>
+    </div>
+  );
+};
+
+/* SHIPMENT BLOCK — shared meta + N items */
+const Shipment = ({ shipDate, arrDate, driver, tk, status, comment, items, compact }) => {
+  const planned = status === 'Запланировано';
+  const metaW = compact ? 320 : 360;
+  return (
+    <div style={{
+      display:'flex',
+      borderBottom: '1.5px solid #c8c8c0',
+      background: planned ? 'repeating-linear-gradient(-45deg,#fff,#fff 6px,#fff8e8 6px,#fff8e8 8px)' : '#fff',
+    }}>
+      {/* LEFT — shared meta: dates · driver · TK · status in ONE row; comment below */}
+      <div style={{ width: metaW, padding: compact ? '3px 8px' : '4px 10px', borderRight:'1.5px solid #aaa', display:'flex', flexDirection:'column', gap: compact ? 1 : 2, justifyContent:'center' }}>
+        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'nowrap' }}>
+          <Label size={13} bold color="#333" style={{whiteSpace:'nowrap'}}>{shipDate}</Label>
+          <Label size={11} color="#bbb">→</Label>
+          <Label size={13} bold color="#1a6b3a" style={{whiteSpace:'nowrap', marginRight:4}}>{arrDate}</Label>
+          <Label size={11} color="#555" style={{whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flex:1, minWidth:0}}>
+            🚚 {driver} · <span style={{color:'#888'}}>{tk}</span>
+          </Label>
+          <StatusChip status={status} />
+        </div>
+        {comment && (
+          <div style={{ display:'flex', gap:3, alignItems:'center' }}>
+            <Label size={10} color="#a06000">💬</Label>
+            <Label size={10} color="#a06000" style={{ fontStyle:'italic', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{comment}</Label>
+          </div>
+        )}
+      </div>
+      {/* RIGHT — items list */}
+      <div style={{ flex: 1 }}>
+        {items.map((it, i) => (
+          <ItemLine key={i} {...it} isFirst={i===0} isLast={i===items.length-1} compact={compact} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT A: Таблица-аккордеон ─────────── */
+const VariantA = () => {
+  const [week17open, setW17] = useState(true);
+  const [day21open, setD21] = useState(true);
+  const [day22open, setD22] = useState(true);
+  const [week16open, setW16] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const metaW = compact ? 320 : 360;
+  const scrollRef = React.useRef(null);
+  const currentWeekRef = React.useRef(null);
+
+  React.useEffect(() => {
+    // Scroll current week into view on mount (no smooth behavior to avoid animation on load)
+    if (scrollRef.current && currentWeekRef.current) {
+      scrollRef.current.scrollTop = currentWeekRef.current.offsetTop - 4;
+    }
+    // Auto-hiding scrollbar: add class while scrolling, remove after inactivity
+    const el = scrollRef.current;
+    if (!el) return;
+    let t;
+    const onScroll = () => {
+      el.classList.add('is-scrolling');
+      clearTimeout(t);
+      t = setTimeout(() => el.classList.remove('is-scrolling'), 900);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); el.removeEventListener('scroll', onScroll); };
+  }, []);
+
+  return (
+    <div style={{ padding: 12, fontFamily: 'Caveat' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Box className="sk-gray" style={{ padding: '5px 16px', cursor: 'pointer', display:'flex',alignItems:'center',gap:6, background:'#1a6b3a', borderColor:'#0d4020', minWidth:140 }}>
+          <span style={{fontSize:14, color:'#fff'}}>＋</span><Label size={14} bold color="#fff" style={{whiteSpace:'nowrap'}}>Отгрузка</Label>
+        </Box>
+        <div style={{ flex: 1 }} />
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🔍 Поиск</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⌕ Фильтры</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⚙ Колонки</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>↓ Excel</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🖨</Label></Box>
+        <Box
+          onClick={() => setCompact(!compact)}
+          className="sk-gray"
+          style={{ padding: '5px 10px', cursor:'pointer', background: compact ? '#1a6b3a' : '#e8e5df', borderColor: compact ? '#0d4020' : '#333' }}
+        >
+          <Label size={13} bold color={compact ? '#fff' : '#333'}>
+            {compact ? '▣ Компакт ✓' : '□ Компакт'}
+          </Label>
+        </Box>
+      </div>
+
+      {/* Filters bar */}
+      <div style={{ display:'flex', gap:6, marginBottom: 8, alignItems:'center', flexWrap:'wrap', padding:'6px 8px', background:'#f5f3ed', border:'1.5px solid #ccc', borderRadius:3 }}>
+        <Label size={13} bold color="#555" style={{marginRight:4}}>Фильтры:</Label>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer', background:'#1a6b3a', borderColor:'#0d4020' }}>
+          <Label size={12} color="#fff" bold>📅 17 неделя ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>🏢 Поставщик: все ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>🥒 Сырьё: все ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>◷ Статус: все ▾</Label>
+        </Box>
+        <Box className="sk-gray" style={{ padding:'3px 10px', cursor:'pointer' }}>
+          <Label size={12}>☑ Переработка: все ▾</Label>
+        </Box>
+        <div style={{ flex:1 }} />
+        <Label size={11} color="#888" style={{fontStyle:'italic'}}>очистить все</Label>
+      </div>
+
+      {/* Table container */}
+      <div style={{ border: '2px solid #333', borderRadius: 3, overflow: 'hidden', background: '#fff' }}>
+        {/* Column header */}
+        <div style={{ display:'flex', background:'#2a2a2a', color:'#fff' }}>
+          <div style={{ width: metaW, padding:'5px 10px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff" style={{whiteSpace:'nowrap'}}>Отгр. → Пост. · Водитель · ТК · Статус</Label>
+          </div>
+          <div style={{ width: 4 }}/>
+          <div style={{ width: 102, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Сырьё</Label>
+          </div>
+          <div style={{ width: 88, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Вес, кг</Label>
+          </div>
+          <div style={{ width: 118, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Поставщик</Label>
+          </div>
+          <div style={{ width: 78, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">Тара</Label>
+          </div>
+          <div style={{ flex: 1, minWidth: 110, padding:'5px 6px', borderRight:'1px solid #555' }}>
+            <Label size={12} bold color="#fff">☑ Переработка · № акта</Label>
+          </div>
+          <div style={{ width: 28, padding:'5px 0', textAlign:'center' }}>
+            <Label size={11} bold color="#fff">⚙</Label>
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div ref={scrollRef} className="wsm-scroll" style={{ maxHeight: 560, overflowY: 'auto' }}>
+
+        {/* Past weeks (10–15) — all collapsed */}
+        {[
+          { n: 10, range: '3–8 марта', kg: 172400 },
+          { n: 11, range: '10–15 марта', kg: 188900 },
+          { n: 12, range: '17–22 марта', kg: 195600 },
+          { n: 13, range: '24–29 марта', kg: 210300 },
+          { n: 14, range: '31 мар– 5 апр', kg: 186700 },
+          { n: 15, range: '7–12 апр', kg: 203500 },
+        ].map(w => (
+          <div key={w.n} style={{
+            display:'flex', alignItems:'center', gap:8,
+            padding:'5px 8px', background:'#6a6a6a', cursor:'pointer',
+            borderBottom:'1px solid #333'
+          }}>
+            <span style={{ color:'#fff', fontSize:16 }}>▸</span>
+            <Label size={14} bold color="#fff" style={{whiteSpace:'nowrap'}}>{w.n} неделя · {w.range}</Label>
+            <div style={{ flex:1 }} />
+            <Pill color="#3a3a3a" textColor="#ffd" size={11}>Σ {w.kg.toLocaleString()} кг</Pill>
+          </div>
+        ))}
+
+        {/* WEEK 16 — collapsed */}
+        <div
+          onClick={() => setW16(!week16open)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 8px', background: '#555', cursor: 'pointer',
+            borderBottom: '2px solid #333'
+          }}
+        >
+          <span style={{ color: '#fff', fontSize: 16 }}>{week16open ? '▾' : '▸'}</span>
+          <Label size={15} bold color="#fff" style={{whiteSpace:'nowrap'}}>16 неделя · 14–19 апр</Label>
+          <div style={{ flex: 1 }} />
+          <Pill color="#3a3a3a" textColor="#ccc" size={12}>6 дн.</Pill>
+          <Pill color="#3a3a3a" textColor="#ffd" size={12}>Σ 198 450 кг</Pill>
+        </div>
+
+        {/* WEEK 17 */}
+        <div ref={currentWeekRef} onClick={() => setW17(!week17open)} style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '6px 8px', background: '#1a6b3a', cursor: 'pointer',
+          borderBottom: '2px solid #333'
+        }}>
+          <span style={{ color: '#fff', fontSize: 16 }}>{week17open ? '▾' : '▸'}</span>
+          <Label size={15} bold color="#fff" style={{whiteSpace:'nowrap'}}>17 неделя · 21–26 апр</Label>
+          <div style={{ flex: 1 }} />
+          <Pill color="#12532c" textColor="#cff" size={12}>4/6 дн.</Pill>
+          <Pill color="#12532c" textColor="#ffd" size={12}>Σ 241 800 кг</Pill>
+        </div>
+
+        {week17open && <>
+          {/* Day 21 */}
+          <div onClick={() => setD21(!day21open)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 8px 4px 24px', background: '#e8f4ed',
+            borderBottom: '1px solid #ccc', cursor: 'pointer'
+          }}>
+            <span style={{ fontSize: 13 }}>{day21open ? '▾' : '▸'}</span>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>21 апр, пн</Label>
+            <div style={{ flex: 1 }} />
+            <Label size={12} color="#555" style={{whiteSpace:'nowrap'}}>4 маш · 7 поз · Σ 68 200 кг</Label>
+          </div>
+          {day21open && <>
+            {/* Shipment 1 — single-item (one supplier, one raw) */}
+            <Shipment
+compact={compact}               shipDate="19 апр" arrDate="21 апр"
+              driver="Вихров П." tk="ИП Фастов"
+              status="Отправлено"
+              items={[{ raw:'Огурцы', kg:18500, supplier:'Байрамов А.', tara:'ящик×420' }]}
+            />
+            {/* Shipment 2 — MIXED: 2 raws from 2 suppliers in one truck */}
+            <Shipment
+compact={compact}               shipDate="20 апр" arrDate="21 апр"
+              driver="Мартыно В." tk="ИП Рябов"
+              status="Отправлено"
+              comment="Догруз по пути"
+              items={[
+                { raw:'Черри', kg:10000, supplier:'Цой К.Т.', tara:null },
+                { raw:'Томаты', kg:10000, supplier:'Ким Т.', tara:null },
+              ]}
+            />
+            {/* Shipment 3 — same supplier, 2 raws */}
+            <Shipment
+compact={compact}               shipDate="20 апр" arrDate="21 апр"
+              driver="Кузнецов А." tk="ТК Авто"
+              status="Отправлено"
+              items={[
+                { raw:'Патиссоны', kg:8536, supplier:'Генералов', tara:null },
+                { raw:'Халапеньо', kg:12440, supplier:'Генералов', tara:'бочка×20' },
+              ]}
+            />
+            {/* Shipment 4 — planned, not yet sent */}
+            <Shipment
+compact={compact}               shipDate="21 апр" arrDate="21 апр"
+              driver="Ахмедов Р." tk="ТК Авто"
+              status="Запланировано"
+              comment="Ожидаем подтв."
+              items={[{ raw:'Халапеньо', kg:8724, supplier:'Мищенко', tara:'бочка×14' }]}
+            />
+            {/* Day subtotal */}
+            <div style={{
+              display:'flex', alignItems:'center', gap:8, flexWrap:'wrap',
+              padding:'4px 8px 4px 24px', background:'#f0f0c8',
+              borderBottom:'2px dashed #bbb', borderTop:'1px solid #ccc'
+            }}>
+              <Label size={13} bold color="#555" style={{whiteSpace:'nowrap'}}>Итого 21 апр:</Label>
+              <Pill color="#e8e8a0" size={12}>Σ 68 200 кг</Pill>
+              <Pill color={RAW_COLORS['Огурцы'].bg} size={11}>Огурцы 18 500</Pill>
+              <Pill color={RAW_COLORS['Черри'].bg} size={11}>Черри 10 000</Pill>
+              <Pill color={RAW_COLORS['Томаты'].bg} size={11}>Томаты 10 000</Pill>
+              <Pill color={RAW_COLORS['Патиссоны'].bg} size={11}>Патиссоны 8 536</Pill>
+              <Pill color={RAW_COLORS['Халапеньо'].bg} size={11}>Халапеньо 21 164</Pill>
+              <Pill color="#eee" size={11}>бочка: 34</Pill>
+              <Pill color="#eee" size={11}>ящик: 420</Pill>
+            </div>
+          </>}
+
+          {/* Day 22 */}
+          <div onClick={() => setD22(!day22open)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 8px 4px 24px', background: '#e8f4ed',
+            borderBottom: '1px solid #ccc', cursor: 'pointer'
+          }}>
+            <span style={{ fontSize: 13 }}>{day22open ? '▾' : '▸'}</span>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>22 апр, вт</Label>
+            <div style={{ flex: 1 }} />
+            <Label size={12} color="#555" style={{whiteSpace:'nowrap'}}>2 маш · Σ 39 350 кг</Label>
+          </div>
+          {day22open && <>
+            <Shipment
+compact={compact}               shipDate="22 апр" arrDate="22 апр"
+              driver="Гриненко К." tk="ИП Кузн."
+              status="Отправлено"
+              items={[{ raw:'Томаты', kg:19350, supplier:'Ким Т.', tara:null }]}
+            />
+            <Shipment
+compact={compact}               shipDate="21 апр" arrDate="22 апр"
+              driver="Шахматов" tk="ТК Авто"
+              status="Запланировано"
+              items={[{ raw:'Перец', kg:20000, supplier:'Генералов', tara:null }]}
+            />
+            <div style={{
+              display:'flex', alignItems:'center', gap:8,
+              padding:'4px 8px 4px 24px', background:'#f0f0c8',
+              borderBottom:'2px dashed #bbb', borderTop:'1px solid #ccc'
+            }}>
+              <Label size={13} bold color="#555" style={{whiteSpace:'nowrap'}}>Итого 22 апр:</Label>
+              <Pill color="#e8e8a0" size={12}>Σ 39 350 кг</Pill>
+              <Pill color={RAW_COLORS['Томаты'].bg} size={11}>Томаты 19 350</Pill>
+              <Pill color={RAW_COLORS['Перец'].bg} size={11}>Перец 20 000</Pill>
+            </div>
+          </>}
+
+          {/* Days 23-26 collapsed stubs */}
+          {['23 апреля, среда','24 апреля, четверг','25 апреля, пятница','26 апреля, суббота'].map((d, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 8px 4px 24px', background: '#f5faf7',
+              borderBottom: '1px solid #ccc', opacity: 0.7
+            }}>
+              <span style={{ fontSize: 13 }}>▸</span>
+              <Label size={14} color="#1a6b3a">{d}</Label>
+              <div style={{ flex: 1 }} />
+              <Label size={12} color="#888">нет данных</Label>
+            </div>
+          ))}
+
+          {/* Week subtotal */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+            padding:'6px 12px', background:'#d4ead9', borderTop:'2px solid #1a6b3a'
+          }}>
+            <Label size={14} bold color="#1a6b3a" style={{whiteSpace:'nowrap'}}>Итого 17 нед.:</Label>
+            <Pill color="#b8dcc0" size={13}>Σ 241 800 кг</Pill>
+            <Pill color={RAW_COLORS['Огурцы'].bg} size={12}>Огурцы 38 200</Pill>
+            <Pill color={RAW_COLORS['Черри'].bg} size={12}>Черри 65 300</Pill>
+            <Pill color={RAW_COLORS['Томаты'].bg} size={12}>Томаты 58 100</Pill>
+            <Pill color="#b8dcc0" size={12}>Прочие 80 200</Pill>
+          </div>
+        </>}
+        </div>
+      </div>
+
+      {/* Annotation */}
+      <div style={{ marginTop: 12, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">
+          ✦ Прошедшие недели (10–16) свёрнуты · Позиция при загрузке — на текущей · Скролл появляется при прокрутке и скрывается в покое
+        </Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT B: Карточки по дням ─────────── */
+const VariantB = () => {
+  const days = [
+    { date: '21 апр', day: 'Пн', total: 68200, items: [
+      { raw: 'Огурцы', supplier: 'Байрамов', driver: 'Вихров', kg: 18500, color: '#c2e8c2' },
+      { raw: 'Черри', supplier: 'Цой', driver: 'Мартыно', kg: 16200, color: '#ffd6c2' },
+      { raw: 'Патиссоны', supplier: 'Генералов', driver: 'Кузнецов', kg: 8536, color: '#c2d4ff' },
+      { raw: 'Халапеньо', supplier: 'Мищенко', driver: 'Ахмедов', kg: 12440, color: '#ffd6f0' },
+    ]},
+    { date: '22 апр', day: 'Вт', total: 52140, items: [
+      { raw: 'Томаты', supplier: 'Ким Т.', driver: 'Гриненко', kg: 19350, color: '#ffe0c2' },
+      { raw: 'Перец', supplier: 'Генералов', driver: 'Шахматов', kg: 20000, color: '#e8c2ff' },
+    ]},
+    { date: '23 апр', day: 'Ср', total: 0, items: [] },
+  ];
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+        <Box className="sk-gray" style={{ padding: '5px 12px' }}><Label size={14} bold>＋ Отгрузка</Label></Box>
+        <div style={{ flex: 1 }} />
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>⚙ Вид</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>↓ Excel</Label></Box>
+        <Box className="sk-gray" style={{ padding: '5px 10px' }}><Label size={13}>🖨</Label></Box>
+      </div>
+
+      {/* Week header */}
+      <div style={{
+        background: '#1a6b3a', padding: '6px 12px', borderRadius: '4px 4px 0 0',
+        display: 'flex', alignItems: 'center', gap: 12
+      }}>
+        <Label size={15} bold color="#fff">17 неделя · 21–26 апреля</Label>
+        <div style={{ flex: 1 }} />
+        <Label size={13} color="#aed6be">241 800 кг</Label>
+      </div>
+
+      {/* Day cards grid */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 1 }}>
+        {days.map((d, di) => (
+          <div key={di} style={{
+            flex: '1 1 200px', minWidth: 180, maxWidth: 240,
+            border: '2px solid #333', background: '#fff',
+            borderRadius: d.items.length === 0 ? 3 : 3,
+            opacity: d.items.length === 0 ? 0.5 : 1
+          }}>
+            <div style={{
+              background: '#444', padding: '4px 8px',
+              display: 'flex', alignItems: 'center', gap: 6
+            }}>
+              <Label size={14} bold color="#fff">{d.date}</Label>
+              <Label size={13} color="#aaa">{d.day}</Label>
+              <div style={{ flex: 1 }} />
+              <Label size={12} color="#ffd">{d.total > 0 ? d.total.toLocaleString() + ' кг' : '—'}</Label>
+            </div>
+            {d.items.map((item, ii) => (
+              <div key={ii} style={{
+                display: 'flex', alignItems: 'stretch',
+                borderBottom: '1px solid #e0e0e0'
+              }}>
+                <div style={{ width: 6, background: item.color, flexShrink: 0 }} />
+                <div style={{ padding: '5px 8px', flex: 1 }}>
+                  <Label size={13} bold>{item.raw}</Label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                    <Label size={11} color="#666">{item.supplier}</Label>
+                    <Label size={11} color="#888">{item.driver}</Label>
+                  </div>
+                  <Label size={12} color="#1a6b3a">{item.kg.toLocaleString()} кг</Label>
+                </div>
+              </div>
+            ))}
+            {d.items.length === 0 && (
+              <div style={{ padding: 12, textAlign: 'center' }}>
+                <Label size={13} color="#bbb" center>нет поставок</Label>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Карточный вид: легко читается по дням · цветовая метка по виду сырья · хорошо для мобильного</Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT C: Сводный дашборд + таблица ─────────── */
+const VariantC = () => (
+  <div style={{ padding: 12 }}>
+    {/* KPI row */}
+    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+      {[
+        { label: 'За неделю', val: '241 800 кг', color: '#d4e8c2' },
+        { label: 'Поставок', val: '18', color: '#c2d4e8' },
+        { label: 'Поставщиков', val: '6', color: '#e8d4c2' },
+        { label: 'Среднее/день', val: '40 300 кг', color: '#e8c2d4' },
+      ].map((k, i) => (
+        <div key={i} style={{
+          flex: 1, border: '2px solid #333', borderRadius: 4,
+          background: k.color, padding: '8px 10px'
+        }}>
+          <Label size={12} color="#555">{k.label}</Label>
+          <Label size={20} bold>{k.val}</Label>
+        </div>
+      ))}
+    </div>
+
+    {/* Mini chart placeholder */}
+    <div style={{
+      display: 'flex', gap: 8, marginBottom: 10
+    }}>
+      <div style={{
+        flex: 2, border: '2px solid #333', borderRadius: 4,
+        background: '#fafafa', padding: 10, height: 80
+      }}>
+        <Label size={12} color="#888">[ График объёмов по дням недели ]</Label>
+        <div style={{ display:'flex', gap:3, alignItems:'flex-end', height: 48, marginTop: 6 }}>
+          {[65, 48, 30, 0, 75, 82].map((v, i) => (
+            <div key={i} style={{
+              flex: 1, background: v > 0 ? '#1a6b3a' : '#ddd',
+              height: `${v}%`, borderRadius: '2px 2px 0 0', opacity: 0.8
+            }} />
+          ))}
+        </div>
+      </div>
+      <div style={{
+        flex: 1, border: '2px solid #333', borderRadius: 4,
+        background: '#fafafa', padding: 10, height: 80
+      }}>
+        <Label size={12} color="#888">[ Доля по сырью ]</Label>
+        <div style={{ display:'flex', gap:3, marginTop:8, flexWrap:'wrap' }}>
+          {[
+            {l:'Огурцы', c:'#c2e8c2'},
+            {l:'Черри', c:'#ffd6c2'},
+            {l:'Томаты', c:'#ffe0c2'},
+            {l:'Перец', c:'#e8c2ff'},
+          ].map((s,i) => (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:3 }}>
+              <div style={{ width:10, height:10, background:s.c, border:'1px solid #999', borderRadius:2 }}/>
+              <Label size={10} color="#555">{s.l}</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    {/* Compact table */}
+    <div style={{ border: '2px solid #333', borderRadius: 3, overflow: 'hidden' }}>
+      <Row cols={[
+        {text:'Дата пост.', w:80, bold:true}, {text:'Сырьё', w:90, bold:true},
+        {text:'Вес', w:70, bold:true}, {text:'Поставщик', w:100, bold:true},
+        {text:'Водитель', w:90, bold:true}
+      ]} bg="#2a2a2a" heights={28} bold border />
+      <div style={{ background:'#1a6b3a', padding:'3px 8px' }}>
+        <Label size={13} bold color="#fff">▾ 21 апреля · 68 200 кг</Label>
+      </div>
+      {[
+        ['Огурцы','18 500','Байрамов','Вихров','#c2e8c2'],
+        ['Черри','16 200','Цой','Мартыно','#ffd6c2'],
+        ['Патиссоны','8 536','Генералов','Кузнецов','#c2d4ff'],
+      ].map(([raw,kg,sup,drv,bg], i) => (
+        <div key={i} style={{ display:'flex', background: i%2===0?'#fafafa':'#fff', borderBottom:'1px solid #eee' }}>
+          <div style={{ width:6, background:bg }} />
+          <div style={{ width:74, padding:'3px 5px' }}><Label size={11} color="#777">21 апр</Label></div>
+          <div style={{ width:90, padding:'3px 5px' }}><Label size={12} bold>{raw}</Label></div>
+          <div style={{ width:70, padding:'3px 5px' }}><Label size={12}>{kg}</Label></div>
+          <div style={{ width:100, padding:'3px 5px' }}><Label size={12}>{sup}</Label></div>
+          <div style={{ width:90, padding:'3px 5px' }}><Label size={12}>{drv}</Label></div>
+        </div>
+      ))}
+    </div>
+
+    <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+      <Label size={13} color="#b06000">✦ Сводный дашборд: KPI сверху + мини-граф + таблица снизу · хорошо для руководителя</Label>
+    </div>
+  </div>
+);
+
+/* ─────────── VARIANT D: Справочники ─────────── */
+const VariantD = () => {
+  const [tab, setTab] = useState('vegetables');
+  const tabs = [
+    { id: 'vegetables', label: '🥒 Сырьё' },
+    { id: 'suppliers', label: '🏭 Поставщики' },
+    { id: 'transport', label: '🚛 ТК' },
+    { id: 'drivers', label: '👤 Водители' },
+  ];
+
+  const data = {
+    vegetables: [
+      { name: 'Огурцы', unit: 'кг', color: '#c2e8c2', active: true },
+      { name: 'Черри', unit: 'кг', color: '#ffd6c2', active: true },
+      { name: 'Томаты', unit: 'кг', color: '#ffe0c2', active: true },
+      { name: 'Патиссоны', unit: 'кг', color: '#c2d4ff', active: true },
+      { name: 'Халапеньо', unit: 'кг', color: '#ffd6f0', active: false },
+    ],
+    suppliers: [
+      { name: 'Байрамов А.', region: 'Краснодар', active: true },
+      { name: 'Цой К.Т.', region: 'Ставрополь', active: true },
+      { name: 'Генералов', region: 'Ростов', active: true },
+      { name: 'Мищенко', region: 'Краснодар', active: true },
+    ],
+    transport: [
+      { name: 'ИП Фастов', type: 'Рефрижератор', active: true },
+      { name: 'ИП Рябов', type: 'Тент', active: true },
+      { name: 'ТК Авто', type: 'Рефрижератор', active: true },
+    ],
+    drivers: [
+      { name: 'Вихров П.', phone: '+7 900 123-45', active: true },
+      { name: 'Мартыно В.', phone: '+7 901 234-56', active: true },
+      { name: 'Гриненко К.', phone: '+7 902 345-67', active: false },
+      { name: 'Ахмедов Р.', phone: '+7 903 456-78', active: true },
+    ],
+  };
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Sidebar + content layout */}
+      <div style={{ display: 'flex', gap: 0, border: '2px solid #333', borderRadius: 4, overflow:'hidden', background:'#fff' }}>
+        {/* Sidebar */}
+        <div style={{ width: 130, borderRight: '2px solid #333', background: '#f5f3ef' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #ccc' }}>
+            <Label size={14} bold>Справочники</Label>
+          </div>
+          {tabs.map(t => (
+            <div
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                padding: '8px 10px',
+                background: tab === t.id ? '#1a6b3a' : 'transparent',
+                cursor: 'pointer',
+                borderBottom: '1px solid #e0e0e0'
+              }}
+            >
+              <Label size={13} bold={tab === t.id} color={tab === t.id ? '#fff' : '#333'}>{t.label}</Label>
+            </div>
+          ))}
+          <div style={{ padding: 10, marginTop: 'auto', borderTop: '1px solid #ccc', marginTop: 20 }}>
+            <Label size={11} color="#888">Только для 👑 Админа</Label>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, padding: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Label size={15} bold>{tabs.find(t=>t.id===tab)?.label}</Label>
+            <div style={{ flex: 1 }} />
+            <Box className="sk-gray" style={{ padding: '3px 10px' }}>
+              <Label size={12} bold>＋ Добавить</Label>
+            </Box>
+          </div>
+          {/* List */}
+          {(data[tab] || []).map((item, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '5px 6px',
+              background: i % 2 === 0 ? '#fafafa' : '#fff',
+              borderBottom: '1px solid #eee',
+              opacity: item.active ? 1 : 0.4
+            }}>
+              {item.color && <div style={{ width: 12, height: 12, background: item.color, border: '1px solid #aaa', borderRadius: 2 }} />}
+              <Label size={13} bold>{item.name}</Label>
+              <Label size={12} color="#888">{item.unit || item.region || item.type || item.phone}</Label>
+              <div style={{ flex: 1 }} />
+              {!item.active && <Pill color="#eee" textColor="#999" size={11}>архив</Pill>}
+              <Label size={12} color="#c00" style={{ cursor: 'pointer' }}>✏</Label>
+              <Label size={12} color="#c00" style={{ cursor: 'pointer' }}>🗑</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Справочник: боковая навигация · мягкое удаление (архив) · редактирование только у Админа</Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── VARIANT E: Модалка добавления (мульти-позиции) ─────────── */
+const Field = ({ label, hint, value, placeholder, type, required, w }) => (
+  <div style={{ flex: w || 1, minWidth: 0 }}>
+    <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:2 }}>
+      <Label size={12} bold>{label}{required && <span style={{color:'#c33'}}> *</span>}</Label>
+      {hint && <Label size={10} color="#999">{hint}</Label>}
+    </div>
+    <div style={{
+      border: '1.5px solid #999', borderRadius: 3,
+      padding: '3px 7px', background: '#fff',
+      display:'flex', alignItems:'center', justifyContent:'space-between', minHeight: 22
+    }}>
+      {value
+        ? <Label size={12} bold>{value}</Label>
+        : <Label size={11} color="#bbb">{placeholder || (type === 'select' ? 'Выбрать...' : type === 'date' ? 'дд.мм' : '—')}</Label>}
+      {type === 'select' && <Label size={11} color="#999">▾</Label>}
+    </div>
+  </div>
+);
+
+const VariantE = () => {
+  const items = [
+    { raw:'Огурцы', kg:'10 000', supplier:'Байрамов А.', tara:'—' },
+    { raw:'Томаты', kg:'10 000', supplier:'Цой К.Т.', tara:'—' },
+    { raw:'Халапеньо', kg:'1 200', supplier:'Мищенко', tara:'бочка × 6' },
+  ];
+
+  return (
+    <div style={{ padding: 12 }}>
+      {/* Modal */}
+      <div style={{
+        border: '2.5px solid #333', borderRadius: 6, background: '#fff',
+        boxShadow: '4px 4px 0 #33333340'
+      }}>
+        <div style={{
+          background: '#1a6b3a', padding: '8px 14px',
+          display: 'flex', alignItems: 'center', gap: 8
+        }}>
+          <Label size={16} bold color="#fff">Новая отгрузка</Label>
+          <Pill color="#fff0c8" textColor="#a06000" size={11}>⏷ Запланировано</Pill>
+          <div style={{ flex: 1 }} />
+          <Label size={18} color="#aed6be" style={{ cursor: 'pointer' }}>✕</Label>
+        </div>
+
+        <div style={{ padding: '10px 14px' }}>
+          {/* Section 1: Общая инфо (едина для всей машины) */}
+          <div style={{ background:'#f5f3ef', padding:'8px 10px', border:'1px dashed #bbb', borderRadius:3, marginBottom:10 }}>
+            <Label size={11} color="#666" style={{ marginBottom:6, textTransform:'uppercase', letterSpacing:0.5 }}>— Общая информация (1 машина) —</Label>
+            <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+              <Field label="Дата отгрузки" hint="у поставщика" type="date" required value="20 апр" />
+              <Field label="Дата поступления" hint="на завод" type="date" required value="21 апр" />
+            </div>
+            <div style={{ display:'flex', gap:8, marginBottom:6 }}>
+              <Field label="Водитель" type="select" required value="Мартыно В." />
+              <Field label="Транспортная компания" hint="авто по водителю" type="select" value="ИП Рябов" />
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'flex-end' }}>
+              <div style={{ flex:1 }}>
+                <Label size={12} bold style={{ marginBottom:2 }}>Статус</Label>
+                <div style={{ display:'flex', gap:4 }}>
+                  <Pill color="#fff0c8" textColor="#a06000" size={11}>● ⏷ Запланировано</Pill>
+                  <Pill color="#f5f3ef" textColor="#999" size={11}>○ ✓ Отправлено</Pill>
+                </div>
+              </div>
+              <div style={{ flex:1 }}>
+                <Label size={12} bold style={{ marginBottom:2 }}>Комментарий <span style={{color:'#999', fontWeight:400, fontSize:10}}>опц.</span></Label>
+                <div style={{ border:'1.5px solid #999', borderRadius:3, padding:'3px 7px', background:'#fff', minHeight:22 }}>
+                  <Label size={11} color="#a06000" style={{ fontStyle:'italic' }}>Догруз по пути, Армавир</Label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Позиции (items) */}
+          <div style={{ marginBottom: 6, display:'flex', alignItems:'baseline', gap:6 }}>
+            <Label size={13} bold>Позиции в машине</Label>
+            <Label size={11} color="#888">можно добавить несколько — разные поставщики и/или сырьё</Label>
+          </div>
+
+          {/* Items list */}
+          <div style={{ border:'1.5px solid #333', borderRadius:3, overflow:'hidden' }}>
+            {/* Header */}
+            <div style={{ display:'flex', background:'#2a2a2a', color:'#fff', padding:'3px 6px', gap:6 }}>
+              <Label size={11} bold color="#fff" style={{ width:16 }}>№</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.3 }}>Сырьё *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1 }}>Вес, кг *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.5 }}>Поставщик *</Label>
+              <Label size={11} bold color="#fff" style={{ flex:1.3 }}>Тара <span style={{fontWeight:400,opacity:0.7}}>опц.</span></Label>
+              <Label size={11} bold color="#fff" style={{ width:20 }}></Label>
+            </div>
+            {items.map((it, i) => {
+              const c = RAW_COLORS[it.raw] || { bg:'#eee', dot:'#999' };
+              return (
+                <div key={i} style={{
+                  display:'flex', gap:6, padding:'4px 6px',
+                  background: c.bg + '55', borderBottom:'1px dashed #ccc', alignItems:'center'
+                }}>
+                  <Label size={11} color="#888" style={{ width:16 }}>{i+1}</Label>
+                  <div style={{ flex:1.3, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff', display:'flex', alignItems:'center', gap:4 }}>
+                    <div style={{ width:8, height:8, borderRadius:8, background:c.dot }}/>
+                    <Label size={12} bold>{it.raw}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <div style={{ flex:1, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff' }}>
+                    <Label size={12}>{it.kg}</Label>
+                  </div>
+                  <div style={{ flex:1.5, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background:'#fff', display:'flex', alignItems:'center' }}>
+                    <Label size={12}>{it.supplier}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <div style={{ flex:1.3, border:'1px solid #aaa', borderRadius:2, padding:'2px 5px', background: it.tara === '—' ? '#f5f3ef' : '#fff', display:'flex', alignItems:'center' }}>
+                    <Label size={12} color={it.tara === '—' ? '#bbb' : '#333'}>{it.tara}</Label>
+                    <div style={{ flex:1 }}/>
+                    <Label size={10} color="#999">▾</Label>
+                  </div>
+                  <Label size={14} color="#c33" style={{ width:20, textAlign:'center', cursor:'pointer' }}>✕</Label>
+                </div>
+              );
+            })}
+            {/* Add row */}
+            <div style={{ padding:'5px 8px', background:'#f0f0c8', cursor:'pointer', borderTop:'1px solid #bbb' }}>
+              <Label size={12} bold color="#1a6b3a">＋ Добавить позицию (ещё сырьё / ещё поставщик)</Label>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div style={{ marginTop:8, padding:'5px 10px', background:'#eef6ee', borderRadius:3, display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+            <Label size={12} bold color="#1a6b3a">Итого в машине:</Label>
+            <Pill color="#fff" size={11}>Σ 21 200 кг</Pill>
+            <Pill color="#fff" size={11}>3 позиции</Pill>
+            <Pill color="#fff" size={11}>2 поставщика</Pill>
+            <Pill color="#fff" size={11}>бочка: 6</Pill>
+          </div>
+
+          <HR my={10} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Box className="sk-gray" style={{ padding: '5px 16px', cursor: 'pointer' }}>
+              <Label size={13}>Отмена</Label>
+            </Box>
+            <div style={{
+              background: '#eee', border: '2px solid #333',
+              padding: '5px 16px', borderRadius: 3, cursor: 'pointer'
+            }}>
+              <Label size={13}>Сохранить как запланировано</Label>
+            </div>
+            <div style={{
+              background: '#1a6b3a', border: '2px solid #333',
+              padding: '5px 16px', borderRadius: 3, cursor: 'pointer'
+            }}>
+              <Label size={13} bold color="#fff">✓ Сохранить и отправить</Label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 4 }}>
+        <Label size={13} color="#b06000">✦ Одна машина = одна отгрузка с N позициями · общая шапка (водитель/ТК/даты/статус) · позиции с разным сырьём и поставщиками · опц. тара и комментарий</Label>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────── MAIN ─────────── */
+const App = () => (
+  <DesignCanvas title="Учёт отгрузок — Вайрфреймы">
+    <DCSection id="main" title="Главная — варианты отображения">
+      <DCArtboard id="a" label="A · Таблица-аккордеон" width={960} height={780}>
+        <VariantA />
+      </DCArtboard>
+      <DCArtboard id="b" label="B · Карточки по дням" width={500} height={420}>
+        <VariantB />
+      </DCArtboard>
+      <DCArtboard id="c" label="C · Дашборд + таблица" width={520} height={460}>
+        <VariantC />
+      </DCArtboard>
+    </DCSection>
+    <DCSection id="aux" title="Вспомогательные экраны">
+      <DCArtboard id="d" label="D · Справочники" width={420} height={400}>
+        <VariantD />
+      </DCArtboard>
+      <DCArtboard id="e" label="E · Форма добавления (мульти-позиции)" width={720} height={680}>
+        <VariantE />
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<div id="root"></div>
+</body>
+</html>
