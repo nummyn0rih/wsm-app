@@ -1,0 +1,277 @@
+// WSM — учёт отгрузок овощного сырья. MVP-сущности: Отгрузки + Справочники.
+// Прод-схема (референс дизайна — reference/). Decimal для веса/денег.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────── ENUMS ───────────
+
+enum Role {
+  ADMIN
+  OPERATOR
+  USER
+  MANAGER // руководитель — заложен на будущее, в MVP не используется
+}
+
+enum ShipmentStatus {
+  PLANNED // Запланировано
+  SHIPPED // Отправлено
+  ARRIVED // Прибыло
+}
+
+enum SupplierStatus {
+  ACTIVE
+  ARCHIVE
+}
+
+enum TaraKind {
+  BOX          // ящик
+  DRUM_METAL   // бочка железо
+  DRUM_PLASTIC // бочка пластик
+}
+
+enum IngredientUnit {
+  LITER // литры
+  TON   // тонны
+  KG    // кг
+}
+
+// Роль параметра качества (см. ROLES в reference/project/raw-quality.jsx)
+enum QualityParamRole {
+  PAYABLE // детализирует вес к оплате (Σ сходится с весом к оплате)
+  NONSTD  // дублирует поле «Нестандарт» (только один на сырьё)
+  REJECT  // дублирует поле «Брак» (на будущее)
+  INFO    // информационный, в расчётах не участвует
+}
+
+// ─────────── AUTH ───────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(USER)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+// ─────────── СПРАВОЧНИКИ ───────────
+
+model RawMaterial {
+  id           String         @id @default(cuid())
+  name         String         @unique
+  defaultUnit  String         @default("кг")
+  colorBg      String // фон пилюли (hex)
+  colorDot     String // точка/полоса (hex)
+  createdAt    DateTime       @default(now())
+
+  qualityParams QualityParam[]
+  shipmentItems ShipmentItem[]
+  avgTripWeights AvgTripWeight[]
+  planCells     WeekPlanCell[]
+  planVisibility WeekPlanRawVisibility[]
+}
+
+model QualityParam {
+  id            String           @id @default(cuid())
+  rawMaterialId String
+  name          String
+  unit          String           @default("кг")
+  role          QualityParamRole
+  order         Int              @default(0)
+
+  rawMaterial   RawMaterial      @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+  calibers      QualityCaliber[]
+
+  @@index([rawMaterialId])
+}
+
+model Carrier {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  drivers   Driver[]
+  shipments Shipment[]
+}
+
+model Driver {
+  id        String     @id @default(cuid())
+  fio       String
+  phone     String
+  carrierId String?
+  info      String? // свободный текст: марка авто, госномер, паспорт и т.п.
+
+  carrier   Carrier?   @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  shipments Shipment[]
+
+  @@index([carrierId])
+}
+
+model Supplier {
+  id         String          @id @default(cuid())
+  name       String
+  inn        String?
+  legalForm  String?
+  legalAddr  String?
+  factAddr   String?
+  status     SupplierStatus  @default(ACTIVE)
+  tags       String[]        @default([])
+  startDate  DateTime?
+  note       String?
+  createdAt  DateTime        @default(now())
+
+  avgTripWeights AvgTripWeight[]
+  shipmentItems  ShipmentItem[]
+}
+
+// Средний вес рейса по сырью (вкладка карточки поставщика)
+model AvgTripWeight {
+  id            String      @id @default(cuid())
+  supplierId    String
+  rawMaterialId String
+  autoKg        Decimal?    @db.Decimal(12, 2) // из истории
+  manualKg      Decimal?    @db.Decimal(12, 2) // ручное
+  useManual     Boolean     @default(false)
+
+  supplier      Supplier    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, rawMaterialId])
+}
+
+model TaraType {
+  id        String         @id @default(cuid())
+  name      String
+  kind      TaraKind
+  items     ShipmentItem[]
+}
+
+model Ingredient {
+  id         String         @id @default(cuid())
+  name       String
+  unit       IngredientUnit
+  qtyOnPlant Decimal        @default(0) @db.Decimal(12, 2)
+}
+
+model Season {
+  id        String  @id @default(cuid())
+  name      String  @unique // «Сезон 2025/2026» (июнь–май, точные даты не нужны)
+  isCurrent Boolean @default(false)
+}
+
+// ─────────── ОТГРУЗКИ ───────────
+
+model Shipment {
+  id        String         @id @default(cuid())
+  shipDate  DateTime? // дата отгрузки (у «Запланировано» может отсутствовать)
+  arrDate   DateTime // дата прихода на завод
+  driverId  String?
+  carrierId String?
+  status    ShipmentStatus @default(PLANNED)
+  comment   String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  driver  Driver?        @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  carrier Carrier?       @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  items   ShipmentItem[]
+
+  @@index([arrDate])
+  @@index([status])
+}
+
+model ShipmentItem {
+  id            String   @id @default(cuid())
+  shipmentId    String
+  rawMaterialId String
+  kg            Decimal  @db.Decimal(12, 2)
+  supplierId    String
+  taraTypeId    String?
+  taraCount     Int?
+  processed     Boolean  @default(false)
+  actNumber     String?
+
+  shipment    Shipment    @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  rawMaterial RawMaterial @relation(fields: [rawMaterialId], references: [id])
+  supplier    Supplier    @relation(fields: [supplierId], references: [id])
+  taraType    TaraType?   @relation(fields: [taraTypeId], references: [id], onDelete: SetNull)
+  quality     Quality?
+
+  @@index([shipmentId])
+  @@index([rawMaterialId])
+  @@index([supplierId])
+}
+
+// Качество приёмки позиции (модалка «Качество приёмки»)
+model Quality {
+  id                   String           @id @default(cuid())
+  shipmentItemId       String           @unique
+  factKg               Decimal          @db.Decimal(12, 2)
+  rejectKg             Decimal          @default(0) @db.Decimal(12, 2)
+  nonStdKg             Decimal          @default(0) @db.Decimal(12, 2)
+  nonStdPaidSeparately Boolean          @default(false)
+  nonStdPrice          Decimal?         @db.Decimal(12, 2)
+  payableKg            Decimal          @db.Decimal(12, 2) // авто = факт − брак − (нестандарт если не оплачивается)
+  payablePct           Decimal          @db.Decimal(5, 2)
+  actNumber            String?
+  pdfName              String?
+  pdfPath              String?
+  pdfSize              String?
+  comment              String?
+  hasData              Boolean          @default(false)
+  hasPdf               Boolean          @default(false)
+
+  shipmentItem ShipmentItem     @relation(fields: [shipmentItemId], references: [id], onDelete: Cascade)
+  calibers     QualityCaliber[]
+}
+
+// Значение по payable-параметру (блок «Калибры»)
+model QualityCaliber {
+  id             String  @id @default(cuid())
+  qualityId      String
+  qualityParamId String
+  kg             Decimal @db.Decimal(12, 2)
+
+  quality      Quality      @relation(fields: [qualityId], references: [id], onDelete: Cascade)
+  qualityParam QualityParam @relation(fields: [qualityParamId], references: [id], onDelete: Cascade)
+
+  @@unique([qualityId, qualityParamId])
+}
+
+// ─────────── ПЛАН ЗАВОДА (недельный) ───────────
+// Числовые целевые значения по сырьё × день недели. Факт считается по отгрузкам.
+
+model WeekPlanCell {
+  id            String      @id @default(cuid())
+  year          Int
+  weekNumber    Int
+  rawMaterialId String
+  dayOfWeek     Int // 1..6 (Пн..Сб)
+  planKg        Decimal     @default(0) @db.Decimal(12, 2)
+
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+
+  @@unique([year, weekNumber, rawMaterialId, dayOfWeek])
+  @@index([year, weekNumber])
+}
+
+// Видимость сырья в таблице плана — per-week
+model WeekPlanRawVisibility {
+  id            String      @id @default(cuid())
+  year          Int
+  weekNumber    Int
+  rawMaterialId String
+  visible       Boolean     @default(true)
+
+  rawMaterial   RawMaterial @relation(fields: [rawMaterialId], references: [id], onDelete: Cascade)
+
+  @@unique([year, weekNumber, rawMaterialId])
+  @@index([year, weekNumber])
+}

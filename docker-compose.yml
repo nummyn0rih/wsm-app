@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: wsm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wsm
+      POSTGRES_PASSWORD: wsm
+      POSTGRES_DB: wsm
+    ports:
+      - "5435:5432"
+    volumes:
+      - wsm-pgdata:/var/lib/postgresql/data
+
+volumes:
+  wsm-pgdata:

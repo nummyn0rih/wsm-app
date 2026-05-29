@@ -1,0 +1,25 @@
+{
+  "name": "wsm-app",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "argon2",
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "db:generate": "pnpm --filter @wsm/db generate",
+    "db:migrate": "pnpm --filter @wsm/db migrate",
+    "db:seed": "pnpm --filter @wsm/db seed",
+    "db:reset": "pnpm --filter @wsm/db reset",
+    "db:studio": "pnpm --filter @wsm/db studio"
+  }
+}
