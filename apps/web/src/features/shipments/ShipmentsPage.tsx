@@ -353,7 +353,17 @@ function ItemLine({ item, first, onQuality }: { item: ShipmentItem; first: boole
   );
 }
 
-/* ─────────── HEATMAP (raw × day) ─────────── */
+/* ─────────── HEATMAP (сырьё × дни) — стиль PivotV2 ─────────── */
+const RAW_W = 150, TOT_W = 100;
+
+function heatBg(hex: string, v: number, max: number): string {
+  if (!v || max <= 0) return '#f8f8f5';
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  const a = (0.25 + 0.75 * (v / max)).toFixed(2);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 function HeatmapView({ year, week }: { year: number; week: number }) {
   const { data, isLoading } = useShipments(year, week);
   const monday = weekMonday(year, week);
@@ -376,32 +386,118 @@ function HeatmapView({ year, week }: { year: number; week: number }) {
   if (isLoading) return <Spinner />;
   if (!raws.length) return <div className="banner">Нет данных для heatmap за эту неделю.</div>;
 
+  const colTotal = (i: number) => raws.reduce((a, r) => a + r.days[i]!, 0);
+  const grand = raws.reduce((a, r) => a + r.days.reduce((x, y) => x + y, 0), 0);
+  const range = `${fmtDay(monday)} – ${fmtDay(dayDate(year, week, 6))}`;
+
   return (
-    <div className="sk-box" style={{ overflow: 'auto' }}>
-      <table className="tbl">
-        <thead><tr><th>Сырьё</th>{DOW_LABELS.map((d) => <th key={d}>{d}</th>)}<th>Σ</th></tr></thead>
-        <tbody>
-          {raws.map((r) => {
-            const sum = r.days.reduce((a, b) => a + b, 0);
-            return (
-              <tr key={r.name}>
-                <td><RawPill raw={r} /></td>
-                {r.days.map((v, i) => (
-                  <td key={i} style={{ background: v ? `${r.colorDot}${Math.round((v / max) * 90 + 10).toString(16).padStart(2, '0')}` : undefined, textAlign: 'right' }} className="mono">
-                    {v ? fmtKg(v) : ''}
-                  </td>
-                ))}
-                <td className="mono" style={{ fontWeight: 700, textAlign: 'right' }}>{fmtKg(sum)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="col tbl-dense" style={{ gap: 0 }}>
+      {/* зелёная шапка недели */}
+      <div className="row" style={{ background: 'var(--accent)', color: '#fff', padding: '5px 12px', borderRadius: '3px 3px 0 0' }}>
+        <strong style={{ fontSize: '1.05em' }}>{week} неделя · {range}</strong>
+        <span className="spacer" />
+        <ColorPill bg="var(--accent-dark)">Σ {fmtKg(grand)} кг</ColorPill>
+      </div>
+      <div className="sk-box" style={{ borderRadius: '0 0 3px 3px', overflow: 'auto' }}>
+        {/* dark header */}
+        <div className="row sk-week" style={{ gap: 0 }}>
+          <div style={{ width: RAW_W, flexShrink: 0, padding: '5px 8px', borderRight: '1px solid #555', fontWeight: 600 }}>Сырьё</div>
+          {DOW_LABELS.map((d, i) => (
+            <div key={d} style={{ flex: 1, minWidth: 0, padding: '4px 6px', borderRight: '1px solid #555', textAlign: 'center', fontWeight: 600 }}>
+              {d}<br /><span className="muted" style={{ color: '#aaa', fontWeight: 400 }}>{fmtDay(dayDate(year, week, i + 1))}</span>
+            </div>
+          ))}
+          <div style={{ width: TOT_W, flexShrink: 0, padding: '5px 8px', background: 'var(--accent-dark)', textAlign: 'center', fontWeight: 600 }}>Итого</div>
+        </div>
+        {/* rows */}
+        {raws.map((r) => {
+          const sum = r.days.reduce((a, b) => a + b, 0);
+          return (
+            <div key={r.name} className="row" style={{ gap: 0, borderTop: '1px solid #e5e2d8' }}>
+              <div className="row" style={{ width: RAW_W, flexShrink: 0, gap: 6, padding: '4px 8px', borderRight: '1px solid #ddd' }}>
+                <span className="dot" style={{ width: 10, height: 10, borderRadius: '50%', background: r.colorDot, border: '1.5px solid #333', flexShrink: 0 }} />
+                <b>{r.name}</b>
+              </div>
+              {r.days.map((v, i) => (
+                <div key={i} className="mono" style={{ flex: 1, minWidth: 0, padding: '5px 6px', borderRight: '1px solid #fff', background: heatBg(r.colorBg, v, max), textAlign: 'center', fontWeight: v > max * 0.5 ? 700 : 400, color: v ? '#222' : '#ccc' }}>
+                  {v ? fmtKg(v) : '·'}
+                </div>
+              ))}
+              <div className="mono" style={{ width: TOT_W, flexShrink: 0, padding: '4px 8px', background: '#eef6ee', textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>{fmtKg(sum)}</div>
+            </div>
+          );
+        })}
+        {/* footer: Σ день */}
+        <div className="row sk-week" style={{ gap: 0, background: 'var(--accent)' }}>
+          <div style={{ width: RAW_W, flexShrink: 0, padding: '5px 8px', borderRight: '1px solid var(--accent-dark)', fontWeight: 600 }}>Σ день</div>
+          {DOW_LABELS.map((d, i) => (
+            <div key={d} className="mono" style={{ flex: 1, minWidth: 0, padding: '5px 6px', borderRight: '1px solid var(--accent-dark)', textAlign: 'center', fontWeight: 600 }}>{colTotal(i) ? fmtKg(colTotal(i)) : '—'}</div>
+          ))}
+          <div className="mono" style={{ width: TOT_W, flexShrink: 0, padding: '5px 8px', background: 'var(--accent-dark)', textAlign: 'center', fontWeight: 700 }}>{fmtKg(grand)}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
-/* ─────────── PLAN (week grid) ─────────── */
+/* ─────────── PLAN (недельная сетка) — стиль plan-view.jsx ─────────── */
+type CellState = 'empty' | 'emptyOver' | 'short' | 'close' | 'norm' | 'over';
+function getCellState(plan: number, fact: number): CellState {
+  if (!plan || plan <= 0) return fact > 0 ? 'emptyOver' : 'empty';
+  const pct = (fact / plan) * 100;
+  if (pct < 80) return 'short';
+  if (pct < 100) return 'close';
+  if (pct <= 120) return 'norm';
+  return 'over';
+}
+const CELL_STYLES: Record<CellState, { bg: string; border: string; bar: string; label: string }> = {
+  empty: { bg: '#f5f3ed', border: '#d8d4c8', bar: '#c8c4b8', label: '#999' },
+  emptyOver: { bg: '#fadbb8', border: '#d89060', bar: '#c06820', label: '#a04000' },
+  short: { bg: '#fbe0e0', border: '#e0a0a0', bar: '#c04040', label: '#a02020' },
+  close: { bg: '#fbf2d8', border: '#d8c068', bar: '#c89020', label: '#a06000' },
+  norm: { bg: '#d8ead4', border: '#7eb070', bar: '#1a6b3a', label: '#1a6b3a' },
+  over: { bg: '#fadbb8', border: '#d89060', bar: '#c06820', label: '#a04000' },
+};
+
+function ProgressBar({ pct, plan, color }: { pct: number; plan: number; color: string }) {
+  const SCALE = 150;
+  const clamped = Math.max(0, Math.min(SCALE, pct));
+  const fillW = (Math.min(100, clamped) / SCALE) * 100;
+  const overW = pct > 100 ? ((Math.min(SCALE, pct) - 100) / SCALE) * 100 : 0;
+  return (
+    <div style={{ width: '100%', height: 8, position: 'relative', background: '#fff', border: '1px solid #b8b4a8', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -1, bottom: -1, left: `${(100 / SCALE) * 100}%`, width: 1, background: '#333' }} />
+      {plan > 0 && <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${fillW}%`, background: color }} />}
+      {overW > 0 && <div style={{ position: 'absolute', top: 0, height: '100%', left: `${(100 / SCALE) * 100}%`, width: `${overW}%`, background: 'repeating-linear-gradient(-45deg,#c06820,#c06820 3px,#fadbb8 3px,#fadbb8 6px)' }} />}
+    </div>
+  );
+}
+
+const PVEG_W = 150, PTOT_W = 130;
+
+function PlanCell({ plan, fact, editable, onPlan }: { plan: number; fact: number; editable: boolean; onPlan: (v: number) => void }) {
+  const st = CELL_STYLES[getCellState(plan, fact)];
+  const pct = plan > 0 ? Math.round((fact / plan) * 100) : 0;
+  const hasAny = plan > 0 || fact > 0;
+  return (
+    <div style={{ height: 82, background: st.bg, border: `1.5px solid ${st.border}`, borderRadius: 3, padding: '5px 6px 5px 9px', display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden', position: 'relative' }}>
+      <div className="row" style={{ gap: 4 }}>
+        <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>план</span>
+        {editable
+          ? <input type="number" value={plan || ''} placeholder="—" onChange={(e) => onPlan(Number(e.target.value) || 0)}
+              className="mono" style={{ flex: 1, width: 0, minWidth: 0, border: '1px dashed #999', borderRadius: 2, padding: '1px 4px', background: '#fffdf2', textAlign: 'right', fontWeight: 700 }} />
+          : <span className="mono" style={{ flex: 1, textAlign: 'right', fontWeight: 700 }}>{fmtKg(plan)}</span>}
+      </div>
+      <div className="row" style={{ gap: 4, alignItems: 'baseline' }}>
+        <span className="muted" style={{ fontSize: 11, flexShrink: 0 }}>факт</span>
+        <b className="mono" style={{ flex: 1, textAlign: 'right', fontSize: 15, color: hasAny ? st.label : '#999' }}>{fmtKg(fact)}</b>
+      </div>
+      <ProgressBar pct={pct} plan={plan} color={st.bar} />
+      <b className="mono" style={{ fontSize: 12, color: hasAny ? st.label : '#999' }}>{plan > 0 ? `${pct}%` : fact > 0 ? 'без плана' : '—'}</b>
+    </div>
+  );
+}
+
 function PlanView({ year, week }: { year: number; week: number }) {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -425,16 +521,13 @@ function PlanView({ year, week }: { year: number; week: number }) {
   const factOf = (raw: string, dow: number) => data.fact[raw]?.[dow] ?? 0;
   const visible = (raw: string) => data.visibility.find((v) => v.rawMaterialId === raw)?.visible ?? true;
   const raws = data.raws.filter((r) => visible(r.id));
+  const DOWS = [1, 2, 3, 4, 5, 6];
 
-  const cellColor = (plan: number, fact: number) => {
-    if (plan === 0 && fact === 0) return undefined;
-    if (plan === 0 && fact > 0) return '#ffe0b8';
-    const pct = (fact / plan) * 100;
-    if (pct < 80) return '#fde2e2';
-    if (pct <= 100) return '#fff3cd';
-    if (pct <= 120) return '#d6ecd9';
-    return '#ffd9a8';
-  };
+  const planCol = (dow: number) => raws.reduce((a, r) => a + planOf(r.id, dow), 0);
+  const factCol = (dow: number) => raws.reduce((a, r) => a + factOf(r.id, dow), 0);
+  const planTotal = raws.reduce((a, r) => a + DOWS.reduce((x, d) => x + planOf(r.id, d), 0), 0);
+  const factTotal = raws.reduce((a, r) => a + DOWS.reduce((x, d) => x + factOf(r.id, d), 0), 0);
+  const range = `${fmtDay(weekMonday(year, week))} – ${fmtDay(dayDate(year, week, 6))}`;
 
   const dirtyCells = Object.entries(draft).map(([k, planKg]) => {
     const [rawMaterialId, dow] = k.split(':');
@@ -442,47 +535,90 @@ function PlanView({ year, week }: { year: number; week: number }) {
   });
 
   return (
-    <div className="col" style={{ gap: 8 }}>
-      {editable && dirtyCells.length > 0 && (
-        <div className="row"><span className="muted">Изменено ячеек: {dirtyCells.length}</span>
-          <button className="btn primary sm" disabled={save.isPending} onClick={() => save.mutate(dirtyCells)}>Сохранить план</button>
-          <button className="btn sm" onClick={() => setDraft({})}>Отмена</button>
-        </div>
-      )}
-      <div className="sk-box" style={{ overflow: 'auto' }}>
-        <table className="tbl">
-          <thead><tr><th>Сырьё</th>{DOW_LABELS.map((d, i) => <th key={d}>{d}<br /><span className="muted" style={{ fontWeight: 400 }}>{fmtDay(dayDate(year, week, i + 1))}</span></th>)}<th>Σ план</th></tr></thead>
-          <tbody>
-            {raws.map((r) => {
-              let rowPlan = 0;
-              return (
-                <tr key={r.id}>
-                  <td><RawPill raw={r} /></td>
-                  {[1, 2, 3, 4, 5, 6].map((dow) => {
-                    const plan = planOf(r.id, dow); const fact = factOf(r.id, dow); rowPlan += plan;
-                    const pct = plan > 0 ? Math.round((fact / plan) * 100) : fact > 0 ? 999 : 0;
-                    return (
-                      <td key={dow} style={{ background: cellColor(plan, fact), minWidth: 92 }}>
-                        <div className="col" style={{ gap: 2 }}>
-                          <div className="row" style={{ gap: 4 }}>
-                            <span className="muted" style={{ fontSize: 11 }}>план</span>
-                            {editable
-                              ? <input type="number" value={plan || ''} onChange={(e) => setDraft({ ...draft, [cellKey(r.id, dow)]: Number(e.target.value) })} style={{ width: 64, padding: '2px 4px' }} />
-                              : <span className="mono">{fmtKg(plan)}</span>}
-                          </div>
-                          <div className="mono" style={{ fontSize: 12 }}>факт {fmtKg(fact)} · {pct === 999 ? '∞' : `${pct}%`}</div>
-                        </div>
-                      </td>
-                    );
-                  })}
-                  <td className="mono" style={{ fontWeight: 700, textAlign: 'right' }}>{fmtKg(rowPlan)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <div className="col tbl-dense" style={{ gap: 8 }}>
+      {/* summary bar */}
+      <div className="row sk-gray" style={{ gap: 10, padding: '6px 10px', border: '1.5px solid #ccc', borderRadius: 3, flexWrap: 'wrap' }}>
+        <strong>План завода · {week} неделя</strong>
+        <span className="muted">{range}</span>
+        <ColorPill bg="#e8e5df">план Σ {fmtKg(planTotal)} кг</ColorPill>
+        <ColorPill bg={factTotal >= planTotal ? '#d4ead4' : '#fbe0e0'}>
+          набрано {fmtKg(factTotal)} кг{planTotal > 0 ? ` · ${Math.round((factTotal / planTotal) * 100)}%` : ''}
+        </ColorPill>
+        <span className="spacer" />
+        {editable && dirtyCells.length > 0 && (
+          <>
+            <span className="muted">изменено: {dirtyCells.length}</span>
+            <button className="btn primary sm" disabled={save.isPending} onClick={() => save.mutate(dirtyCells)}>Сохранить план</button>
+            <button className="btn sm" onClick={() => setDraft({})}>Отмена</button>
+          </>
+        )}
       </div>
-      <div className="banner">Цвет ячейки: серый — нет плана/факта · красный &lt;80% · жёлтый ≤100% · зелёный ≤120% · оранжевый &gt;120% или поступление без плана.</div>
+
+      <div className="sk-box" style={{ overflow: 'auto' }}>
+        {/* dark header */}
+        <div className="row sk-week" style={{ gap: 0 }}>
+          <div style={{ width: PVEG_W, flexShrink: 0, padding: '6px 10px', borderRight: '1px solid #555', fontWeight: 600 }}>Овощ \ День</div>
+          {DOWS.map((d, i) => (
+            <div key={d} style={{ flex: 1, minWidth: 0, padding: '4px 6px', borderRight: '1px solid #555', textAlign: 'center', fontWeight: 600 }}>
+              {DOW_LABELS[i]}<br /><span style={{ color: '#aaa', fontWeight: 400 }}>{fmtDay(dayDate(year, week, d))}</span>
+            </div>
+          ))}
+          <div style={{ width: PTOT_W, flexShrink: 0, padding: '6px 8px', background: 'var(--accent-dark)', textAlign: 'center', fontWeight: 600 }}>Итого за неделю</div>
+        </div>
+        {/* rows */}
+        {raws.map((r, ri) => {
+          const planR = DOWS.reduce((a, d) => a + planOf(r.id, d), 0);
+          const factR = DOWS.reduce((a, d) => a + factOf(r.id, d), 0);
+          const rowSt = CELL_STYLES[getCellState(planR, factR)];
+          const rowPct = planR > 0 ? Math.round((factR / planR) * 100) : 0;
+          return (
+            <div key={r.id} className="row" style={{ gap: 0, background: ri % 2 ? '#fff' : '#fafaf6', borderTop: '1px solid #e5e2d8', alignItems: 'stretch' }}>
+              <div className="row" style={{ width: PVEG_W, flexShrink: 0, gap: 6, padding: '6px 10px', borderRight: '1px solid #ccc' }}>
+                <span className="dot" style={{ width: 12, height: 12, borderRadius: '50%', background: r.colorDot, border: '1.5px solid #333', flexShrink: 0 }} />
+                <b>{r.name}</b>
+              </div>
+              {DOWS.map((dow) => (
+                <div key={dow} style={{ flex: 1, minWidth: 0, padding: 4, borderRight: '1px solid #e5e2d8' }}>
+                  <PlanCell plan={planOf(r.id, dow)} fact={factOf(r.id, dow)} editable={editable} onPlan={(v) => setDraft({ ...draft, [cellKey(r.id, dow)]: v })} />
+                </div>
+              ))}
+              <div className="col" style={{ width: PTOT_W, flexShrink: 0, padding: '6px 8px', background: 'var(--subtotal)', justifyContent: 'center', gap: 2 }}>
+                <div className="row" style={{ gap: 4 }}><span className="muted" style={{ fontSize: 11 }}>план</span><b className="mono">{fmtKg(planR)}</b></div>
+                <div className="row" style={{ gap: 4 }}><span className="muted" style={{ fontSize: 11 }}>факт</span><b className="mono" style={{ color: rowSt.label }}>{fmtKg(factR)}</b></div>
+                {planR > 0 && <b className="mono" style={{ fontSize: 11, color: rowSt.label }}>{rowPct}%</b>}
+              </div>
+            </div>
+          );
+        })}
+        {/* footer: итого за день */}
+        <div className="row sk-week" style={{ gap: 0, background: 'var(--accent-dark)', alignItems: 'stretch' }}>
+          <div style={{ width: PVEG_W, flexShrink: 0, padding: '7px 10px', borderRight: '1px solid #1a6b3a', fontWeight: 600 }}>Итого за день</div>
+          {DOWS.map((dow) => {
+            const p = planCol(dow), f = factCol(dow);
+            const pct = p > 0 ? Math.round((f / p) * 100) : 0;
+            return (
+              <div key={dow} className="col" style={{ flex: 1, minWidth: 0, padding: '5px 6px', borderRight: '1px solid #1a6b3a', textAlign: 'center', gap: 1 }}>
+                <span className="mono"><span style={{ color: '#aed6be' }}>п </span>{fmtKg(p)}</span>
+                <span className="mono"><span style={{ color: '#aed6be' }}>ф </span>{fmtKg(f)}{p > 0 ? ` ${pct}%` : ''}</span>
+              </div>
+            );
+          })}
+          <div className="col" style={{ width: PTOT_W, flexShrink: 0, padding: '5px 8px', background: 'var(--accent)', textAlign: 'center', gap: 1, justifyContent: 'center' }}>
+            <span style={{ color: '#aed6be', fontSize: 11 }}>факт / план</span>
+            <b className="mono">{fmtKg(factTotal)} / {fmtKg(planTotal)}</b>
+          </div>
+        </div>
+      </div>
+
+      <div className="row" style={{ flexWrap: 'wrap', gap: 8, padding: '6px 10px', background: '#fffbe8', border: '1.5px dashed #e09a20', borderRadius: 3 }}>
+        <strong style={{ color: '#b06000' }}>Цвет ячейки:</strong>
+        {([['empty', 'план не задан'], ['short', 'недобор <80%'], ['close', 'почти 80–99%'], ['norm', 'норма 100–120%'], ['over', 'перебор >120%'], ['emptyOver', 'без плана']] as [CellState, string][]).map(([st, l]) => (
+          <span key={st} className="row" style={{ gap: 5 }}>
+            <span style={{ width: 14, height: 14, background: CELL_STYLES[st].bg, border: `1.5px solid ${CELL_STYLES[st].border}`, borderRadius: 2 }} />
+            <span className="muted">{l}</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
