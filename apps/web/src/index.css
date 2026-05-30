@@ -26,10 +26,22 @@
 html, body, #root { height: 100%; margin: 0; }
 body {
   font-family: var(--caveat);
+  font-weight: 600;            /* Caveat тонкий на 400 — берём полужирный как в прототипе */
   background: var(--bg);
   color: var(--text);
-  font-size: 16px;            /* Caveat мельче sans → крупнее базу */
+  font-size: 15px;            /* Caveat мельче sans → крупнее базу */
 }
+
+/* плотная таблица отгрузок — мельче, как в эскизе */
+.tbl-dense { font-size: 13px; }
+
+/* инлайн-«поле ввода» как в эскизе (вес / № акта) */
+.sk-input {
+  display: flex; align-items: center; gap: 3px;
+  border: 1px dashed #999; border-radius: 2px; padding: 0 5px;
+  background: #fffdf2; min-height: 18px;
+}
+.sk-input.done { background: #f0f0f0; border-color: #aaa; }
 button { font: inherit; cursor: pointer; }
 input, select, textarea { font: inherit; }
 a { color: var(--accent); }

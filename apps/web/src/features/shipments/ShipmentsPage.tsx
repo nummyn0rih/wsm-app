@@ -14,6 +14,8 @@ type Mode = 'table' | 'heatmap' | 'plan';
 
 // Ширины колонок таблицы позиций (как в прототипе VariantA).
 const COLS = { meta: 360, bar: 4, raw: 110, weight: 92, supplier: 124, tara: 84, proc: 150, gear: 28 };
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const dayLabel = (iso: string) => `${fmtDay(new Date(iso))}, ${WD[new Date(iso).getUTCDay()]}`;
 
 export function ShipmentsPage() {
   const { can } = useAuth();
@@ -37,7 +39,7 @@ export function ShipmentsPage() {
     <div className="col" style={{ gap: 10 }}>
       {/* ── Toolbar ── */}
       <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-        {can('shipments:write') && <SkButton green onClick={() => setShowForm(true)}>＋ Отгрузка</SkButton>}
+        {can('shipments:write') && <SkButton green big onClick={() => setShowForm(true)}>＋ Отгрузка</SkButton>}
         <span className="spacer" />
         <SkButton title="Поиск (скоро)">🔍 Поиск</SkButton>
         <SkButton title="Фильтры (скоро)">⌕ Фильтры</SkButton>
@@ -51,16 +53,18 @@ export function ShipmentsPage() {
         </div>
       </div>
 
-      {/* ── Неделя-навигация ── */}
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        <SkButton onClick={() => shiftWeek(-1)}>←</SkButton>
-        <SkButton onClick={() => setWeek(isoWeekOf(new Date()))}>сегодня</SkButton>
-        <SkButton onClick={() => shiftWeek(1)}>→</SkButton>
-        <strong style={{ marginLeft: 6, fontSize: '1.1em' }}>Неделя {week} · {year}</strong>
-        <span className="muted">{rangeLabel}</span>
-      </div>
+      {/* ── Неделя-навигация (для Heatmap/План; в Таблице — внутри фильтр-бара) ── */}
+      {mode !== 'table' && (
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <SkButton onClick={() => shiftWeek(-1)}>←</SkButton>
+          <SkButton onClick={() => setWeek(isoWeekOf(new Date()))}>сегодня</SkButton>
+          <SkButton onClick={() => shiftWeek(1)}>→</SkButton>
+          <strong style={{ marginLeft: 6, fontSize: '1.1em' }}>Неделя {week} · {year}</strong>
+          <span className="muted">{rangeLabel}</span>
+        </div>
+      )}
 
-      {mode === 'table' && <TableView year={year} week={week} onDriver={setDriverCard} onQuality={setQuality} />}
+      {mode === 'table' && <TableView year={year} week={week} onPrev={() => shiftWeek(-1)} onNext={() => shiftWeek(1)} onToday={() => setWeek(isoWeekOf(new Date()))} onDriver={setDriverCard} onQuality={setQuality} />}
       {mode === 'heatmap' && <HeatmapView year={year} week={week} />}
       {mode === 'plan' && <PlanView year={year} week={week} />}
 
@@ -89,8 +93,17 @@ function rawTotals(ships: Shipment[]): { name: string; kg: number; bg: string; d
   return [...m.values()].sort((a, b) => b.kg - a.kg);
 }
 
+// Сумма тары по видам (для пилюль «бочка: N · ящик: N» в итоге дня).
+function taraTotals(ships: Shipment[]): { name: string; count: number }[] {
+  const m = new Map<string, number>();
+  for (const s of ships) for (const it of s.items) {
+    if (it.taraType && it.taraCount) m.set(it.taraType.name, (m.get(it.taraType.name) ?? 0) + it.taraCount);
+  }
+  return [...m.entries()].map(([name, count]) => ({ name, count }));
+}
+
 /* ─────────── TABLE (аккордеон неделя → день → отгрузка) ─────────── */
-function TableView({ year, week, onDriver, onQuality }: { year: number; week: number; onDriver: (d: Driver) => void; onQuality: (i: ShipmentItem) => void }) {
+function TableView({ year, week, onPrev, onNext, onToday, onDriver, onQuality }: { year: number; week: number; onPrev: () => void; onNext: () => void; onToday: () => void; onDriver: (d: Driver) => void; onQuality: (i: ShipmentItem) => void }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const { data, isLoading } = useShipments(year, week);
@@ -142,7 +155,10 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
       {/* ── Фильтр-бар ── */}
       <div className="row sk-gray" style={{ flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1.5px solid #ccc', borderRadius: 3 }}>
         <strong className="muted" style={{ marginRight: 2 }}>Фильтры:</strong>
-        <span className="pill" style={{ background: '#fff' }}>📅 {week} нед · {year}</span>
+        <SkButton onClick={onPrev} title="Предыдущая неделя">←</SkButton>
+        <SkButton active title="Текущая неделя">📅 {week} нед · {year}</SkButton>
+        <SkButton onClick={onNext} title="Следующая неделя">→</SkButton>
+        <SkButton onClick={onToday}>сегодня</SkButton>
         <SkButton title="Поставщик (скоро)">🏢 Поставщик: все ▾</SkButton>
         <SkButton title="Сырьё (скоро)">🥒 Сырьё: все ▾</SkButton>
         <span className="muted" style={{ marginLeft: 4 }}>Статус:</span>
@@ -162,7 +178,7 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
       {isLoading ? <Spinner /> : !allShips.length ? (
         <div className="banner">Нет отгрузок за эту неделю.</div>
       ) : (
-        <div className="sk-box" style={{ overflow: 'hidden' }}>
+        <div className="sk-box tbl-dense" style={{ overflow: 'hidden' }}>
           {/* dark column header */}
           <div className="row sk-week" style={{ gap: 0 }}>
             <HCell w={COLS.meta}>Отгр. → Пост. · Водитель · ТК · Статус</HCell>
@@ -196,7 +212,7 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
                   <div className="row sk-day" onClick={() => setCollapsedDays((prev) => { const n = new Set(prev); n.has(day) ? n.delete(day) : n.add(day); return n; })}
                     style={{ gap: 6, padding: '4px 8px 4px 22px', borderBottom: '1px solid #ccc', cursor: 'pointer' }}>
                     <span>{collapsed ? '▸' : '▾'}</span>
-                    <strong style={{ color: 'var(--accent)' }}>{fmtDay(new Date(day))}</strong>
+                    <strong style={{ color: 'var(--accent)' }}>{dayLabel(day)}</strong>
                     <span className="spacer" />
                     <span className="muted">{ships.length} маш · {posCount} поз · Σ {fmtKg(dayKg)} кг</span>
                   </div>
@@ -225,7 +241,7 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
                             {s.comment && <span className="muted" style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💬 {s.comment}</span>}
                             <span className="spacer" />
                             {canAdvance && next && (
-                              <button className="btn sm primary" onClick={() => changeStatus.mutate({ id: s.id, to: next })}>→ {STATUS_LABEL[next]}</button>
+                              <button className="btn sm" title={`Перевести в «${STATUS_LABEL[next]}»`} onClick={() => changeStatus.mutate({ id: s.id, to: next })}>→ {STATUS_LABEL[next]}</button>
                             )}
                           </div>
                         </div>
@@ -243,10 +259,13 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
                   {/* day subtotal */}
                   {!collapsed && (
                     <div className="row sk-subtotal" style={{ flexWrap: 'wrap', gap: 6, padding: '4px 8px 4px 22px', borderBottom: '1px solid #ccc' }}>
-                      <strong className="muted">Итого {fmtDay(new Date(day))}:</strong>
+                      <strong className="muted">Итого {dayLabel(day)}:</strong>
                       <ColorPill bg="#e8e8a0">Σ {fmtKg(dayKg)} кг</ColorPill>
                       {rawTotals(ships).map((r) => (
                         <ColorPill key={r.name} bg={r.bg} dot={r.dot}>{r.name} {fmtKg(r.kg)}</ColorPill>
+                      ))}
+                      {taraTotals(ships).map((t) => (
+                        <ColorPill key={t.name} bg="#eee">{t.name}: {t.count}</ColorPill>
                       ))}
                     </div>
                   )}
@@ -294,9 +313,13 @@ function ItemLine({ item, first, onQuality }: { item: ShipmentItem; first: boole
         <span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', background: raw.colorDot, flexShrink: 0 }} />
         <b style={{ textDecoration: deco }}>{raw.name}</b>
       </div>
-      {/* вес */}
+      {/* вес — инлайн-поле */}
       <div style={{ width: COLS.weight, flexShrink: 0, padding: '2px 6px', borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center' }}>
-        <b className="mono" style={{ textDecoration: deco }}>{fmtKg(item.kg)}</b>
+        <span className={`sk-input ${item.processed ? 'done' : ''}`} style={{ flex: 1 }}>
+          <b className="mono" style={{ textDecoration: deco }}>{fmtKg(item.kg)}</b>
+          <span className="spacer" />
+          <span className="muted" style={{ fontSize: 11 }}>✎</span>
+        </span>
       </div>
       {/* поставщик */}
       <div style={{ width: COLS.supplier, flexShrink: 0, padding: '2px 6px', borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
@@ -311,11 +334,13 @@ function ItemLine({ item, first, onQuality }: { item: ShipmentItem; first: boole
         <span style={{ width: 14, height: 14, border: '1.5px solid #333', borderRadius: 2, background: item.processed ? 'var(--accent)' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>
           {item.processed && '✓'}
         </span>
-        <span className="mono" style={{ color: item.processed ? 'var(--accent)' : '#bbb' }}>
-          {item.processed ? `№ ${item.actNumber ?? '—'}` : '№ акта'}
+        <span className={`sk-input ${item.processed ? 'done' : ''}`} style={{ flex: 1, borderColor: '#aaa', background: item.processed ? '#e8f0e4' : '#fafafa' }}>
+          <span className="mono" style={{ color: item.processed ? 'var(--accent)' : '#bbb' }}>
+            {item.processed ? `№ ${item.actNumber ?? '—'}` : '№ акта'}
+          </span>
+          <span className="spacer" />
+          {item.processed && <QualityBadge item={item} onClick={onQuality} />}
         </span>
-        <span className="spacer" />
-        {item.processed && <QualityBadge item={item} onClick={onQuality} />}
       </div>
       {/* gear */}
       <div style={{ width: COLS.gear, flexShrink: 0, borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555' }}>✎</div>
