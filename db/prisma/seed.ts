@@ -113,9 +113,9 @@ async function main() {
   // ── Виды тары ──
   await prisma.taraType.createMany({
     data: [
-      { name: 'Ящик пластиковый', kind: TaraKind.BOX },
-      { name: 'Бочка металлическая 200л', kind: TaraKind.DRUM_METAL },
-      { name: 'Бочка пластиковая 220л', kind: TaraKind.DRUM_PLASTIC },
+      { name: 'Ящик', kind: TaraKind.BOX },
+      { name: 'Бочка 200л', kind: TaraKind.DRUM_METAL },
+      { name: 'Бочка пластик 220л', kind: TaraKind.DRUM_PLASTIC },
     ],
   });
   const taraBox = await prisma.taraType.findFirst({ where: { kind: TaraKind.BOX } });

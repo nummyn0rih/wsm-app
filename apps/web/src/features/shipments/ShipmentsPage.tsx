@@ -16,6 +16,11 @@ type Mode = 'table' | 'heatmap' | 'plan';
 const COLS = { meta: 360, bar: 4, raw: 110, weight: 92, supplier: 124, tara: 84, proc: 150, gear: 28 };
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const dayLabel = (iso: string) => `${fmtDay(new Date(iso))}, ${WD[new Date(iso).getUTCDay()]}`;
+// «Вихров Павел Игоревич» → «Вихров П.И.» (модалка показывает полное ФИО)
+const shortFio = (fio: string) => {
+  const p = fio.trim().split(/\s+/);
+  return p.length < 2 ? fio : `${p[0]} ${p.slice(1).map((w) => w[0] + '.').join('')}`;
+};
 
 export function ShipmentsPage() {
   const { can } = useAuth();
@@ -230,8 +235,8 @@ function TableView({ year, week, onPrev, onNext, onToday, onDriver, onQuality }:
                             <b style={{ color: 'var(--accent)' }}>{fmtDay(new Date(s.arrDate))}</b>
                             <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {s.driver ? (
-                                <>🚚 <button onClick={() => onDriver(s.driver!)} title="Карточка водителя"
-                                  style={{ border: 'none', background: 'none', color: '#1a4a8a', textDecoration: 'underline dotted', cursor: 'pointer', padding: 0, font: 'inherit' }}>{s.driver.fio}</button>
+                                <>🚚 <button onClick={() => onDriver(s.driver!)} title={`${s.driver.fio} · карточка водителя`}
+                                  style={{ border: 'none', background: 'none', color: '#1a4a8a', textDecoration: 'underline dotted', cursor: 'pointer', padding: 0, font: 'inherit' }}>{shortFio(s.driver.fio)}</button>
                                   {s.carrier && <span className="muted"> · {s.carrier.name}</span>}</>
                               ) : <span className="muted" style={{ fontStyle: 'italic' }}>🕒 водитель не назначен</span>}
                             </span>

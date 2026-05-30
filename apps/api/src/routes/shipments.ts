@@ -17,7 +17,7 @@ const shipmentInclude = {
   carrier: true,
   items: {
     include: {
-      rawMaterial: true,
+      rawMaterial: { include: { qualityParams: { orderBy: { order: 'asc' } } } },
       supplier: true,
       taraType: true,
       quality: { include: { calibers: true } },
