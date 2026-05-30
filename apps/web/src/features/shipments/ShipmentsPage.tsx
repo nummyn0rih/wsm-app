@@ -1,15 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { STATUS_ORDER, STATUS_LABEL, type ShipmentStatus } from '@wsm/shared';
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { StatusChip, RawPill, Spinner, fmtKg } from '../../components/ui';
+import { SkButton, ColorPill } from '../../components/sketch';
 import type { Driver, Shipment, ShipmentItem, WeekPlanResponse } from '../../lib/types';
 import { DOW_LABELS, dayDate, dowOf, fmtDay, isoWeekOf, weekMonday } from '../../lib/week';
 import { DriverModal, QualityModal, ShipmentFormModal } from './modals';
 import { QualityBadge } from './QualityBadge';
 
 type Mode = 'table' | 'heatmap' | 'plan';
+
+// Ширины колонок таблицы позиций (как в прототипе VariantA).
+const COLS = { meta: 360, bar: 4, raw: 110, weight: 92, supplier: 124, tara: 84, proc: 150, gear: 28 };
 
 export function ShipmentsPage() {
   const { can } = useAuth();
@@ -30,22 +34,30 @@ export function ShipmentsPage() {
   const rangeLabel = `${fmtDay(monday)} – ${fmtDay(dayDate(year, week, 6))}`;
 
   return (
-    <div className="col" style={{ gap: 12 }}>
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        {can('shipments:write') && <button className="btn primary" onClick={() => setShowForm(true)}>＋ Отгрузка</button>}
-        <div className="row" style={{ marginLeft: 8 }}>
-          <button className="btn sm" onClick={() => shiftWeek(-1)}>←</button>
-          <button className="btn sm" onClick={() => setWeek(isoWeekOf(new Date()))}>сегодня</button>
-          <button className="btn sm" onClick={() => shiftWeek(1)}>→</button>
-          <strong style={{ marginLeft: 6 }}>Неделя {week} · {year}</strong>
-          <span className="muted">{rangeLabel}</span>
-        </div>
+    <div className="col" style={{ gap: 10 }}>
+      {/* ── Toolbar ── */}
+      <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+        {can('shipments:write') && <SkButton green onClick={() => setShowForm(true)}>＋ Отгрузка</SkButton>}
         <span className="spacer" />
+        <SkButton title="Поиск (скоро)">🔍 Поиск</SkButton>
+        <SkButton title="Фильтры (скоро)">⌕ Фильтры</SkButton>
+        <SkButton title="Колонки (скоро)">⚙ Колонки</SkButton>
+        <SkButton title="Экспорт (скоро)">↓ Excel</SkButton>
+        <SkButton title="Печать (скоро)">🖨</SkButton>
         <div className="seg">
           <button className={mode === 'table' ? 'on' : ''} onClick={() => setModePersist('table')}>▤ Таблица</button>
           <button className={mode === 'heatmap' ? 'on' : ''} onClick={() => setModePersist('heatmap')}>▦ Heatmap</button>
           <button className={mode === 'plan' ? 'on' : ''} onClick={() => setModePersist('plan')}>◫ План</button>
         </div>
+      </div>
+
+      {/* ── Неделя-навигация ── */}
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        <SkButton onClick={() => shiftWeek(-1)}>←</SkButton>
+        <SkButton onClick={() => setWeek(isoWeekOf(new Date()))}>сегодня</SkButton>
+        <SkButton onClick={() => shiftWeek(1)}>→</SkButton>
+        <strong style={{ marginLeft: 6, fontSize: '1.1em' }}>Неделя {week} · {year}</strong>
+        <span className="muted">{rangeLabel}</span>
       </div>
 
       {mode === 'table' && <TableView year={year} week={week} onDriver={setDriverCard} onQuality={setQuality} />}
@@ -66,12 +78,37 @@ function useShipments(year: number, week: number) {
   });
 }
 
-/* ─────────── TABLE ─────────── */
+// Агрегация веса по сырью (для пилюль в итогах дня/недели).
+function rawTotals(ships: Shipment[]): { name: string; kg: number; bg: string; dot: string }[] {
+  const m = new Map<string, { name: string; kg: number; bg: string; dot: string }>();
+  for (const s of ships) for (const it of s.items) {
+    const e = m.get(it.rawMaterial.name) ?? { name: it.rawMaterial.name, kg: 0, bg: it.rawMaterial.colorBg, dot: it.rawMaterial.colorDot };
+    e.kg += Number(it.kg);
+    m.set(it.rawMaterial.name, e);
+  }
+  return [...m.values()].sort((a, b) => b.kg - a.kg);
+}
+
+/* ─────────── TABLE (аккордеон неделя → день → отгрузка) ─────────── */
 function TableView({ year, week, onDriver, onQuality }: { year: number; week: number; onDriver: (d: Driver) => void; onQuality: (i: ShipmentItem) => void }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const { data, isLoading } = useShipments(year, week);
   const [statusFilter, setStatusFilter] = useState<ShipmentStatus | 'all'>('all');
+  const [hidePlanned, setHidePlanned] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+  const [weekOpen, setWeekOpen] = useState(true);
+
+  // auto-hide overlay scrollbar (как в прототипе)
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout>;
+    const onScroll = () => { el.classList.add('is-scrolling'); clearTimeout(t); t = setTimeout(() => el.classList.remove('is-scrolling'), 900); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); el.removeEventListener('scroll', onScroll); };
+  }, []);
 
   const changeStatus = useMutation({
     mutationFn: ({ id, to }: { id: string; to: ShipmentStatus }) => api.patch(`/shipments/${id}/status`, { to }),
@@ -83,73 +120,205 @@ function TableView({ year, week, onDriver, onQuality }: { year: number; week: nu
     const map = new Map<string, Shipment[]>();
     for (const s of data ?? []) {
       if (statusFilter !== 'all' && s.status !== statusFilter) continue;
+      if (hidePlanned && s.status === 'PLANNED') continue;
       const key = s.arrDate.slice(0, 10);
-      (map.get(key) ?? map.set(key, []).get(key)!).push(s);
+      const arr = map.get(key) ?? (map.set(key, []).get(key)!);
+      arr.push(s);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [data, statusFilter]);
-
-  if (isLoading) return <Spinner />;
-  if (!data?.length) return <div className="banner">Нет отгрузок за эту неделю.</div>;
+  }, [data, statusFilter, hidePlanned]);
 
   const nextStatus = (s: ShipmentStatus): ShipmentStatus | null => {
     const i = STATUS_ORDER.indexOf(s);
     return i < STATUS_ORDER.length - 1 ? STATUS_ORDER[i + 1]! : null;
   };
 
+  const allShips = byDay.flatMap(([, s]) => s);
+  const weekKg = allShips.reduce((sum, s) => sum + s.items.reduce((a, it) => a + Number(it.kg), 0), 0);
+  const rangeLabel = `${fmtDay(weekMonday(year, week))} – ${fmtDay(dayDate(year, week, 6))}`;
+
   return (
-    <div className="col" style={{ gap: 10 }}>
-      <div className="row">
-        <span className="muted">Статус:</span>
+    <div className="col" style={{ gap: 8 }}>
+      {/* ── Фильтр-бар ── */}
+      <div className="row sk-gray" style={{ flexWrap: 'wrap', gap: 6, padding: '6px 8px', border: '1.5px solid #ccc', borderRadius: 3 }}>
+        <strong className="muted" style={{ marginRight: 2 }}>Фильтры:</strong>
+        <span className="pill" style={{ background: '#fff' }}>📅 {week} нед · {year}</span>
+        <SkButton title="Поставщик (скоро)">🏢 Поставщик: все ▾</SkButton>
+        <SkButton title="Сырьё (скоро)">🥒 Сырьё: все ▾</SkButton>
+        <span className="muted" style={{ marginLeft: 4 }}>Статус:</span>
         {(['all', ...STATUS_ORDER] as const).map((s) => (
-          <button key={s} className={`btn sm ${statusFilter === s ? 'primary' : ''}`} onClick={() => setStatusFilter(s)}>
+          <SkButton key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
             {s === 'all' ? 'все' : STATUS_LABEL[s]}
-          </button>
+          </SkButton>
         ))}
+        <SkButton title="Переработка (скоро)">☑ Переработка: все ▾</SkButton>
+        <SkButton active={hidePlanned} onClick={() => setHidePlanned((v) => !v)}>
+          {hidePlanned ? '☑' : '☐'} Скрыть плановые
+        </SkButton>
+        <span className="spacer" />
+        <button className="btn sm" onClick={() => { setStatusFilter('all'); setHidePlanned(false); }}>очистить</button>
       </div>
 
-      {byDay.map(([day, ships]) => {
-        const total = ships.reduce((sum, s) => sum + s.items.reduce((a, it) => a + Number(it.kg), 0), 0);
-        return (
-          <div className="card" key={day} style={{ overflow: 'hidden' }}>
-            <div className="row" style={{ background: 'var(--surface-2)', padding: '6px 12px', fontWeight: 600 }}>
-              <span>{fmtDay(new Date(day))}</span><span className="spacer" />
-              <span className="muted">{ships.length} маш · Σ {fmtKg(total)} кг</span>
+      {isLoading ? <Spinner /> : !allShips.length ? (
+        <div className="banner">Нет отгрузок за эту неделю.</div>
+      ) : (
+        <div className="sk-box" style={{ overflow: 'hidden' }}>
+          {/* dark column header */}
+          <div className="row sk-week" style={{ gap: 0 }}>
+            <HCell w={COLS.meta}>Отгр. → Пост. · Водитель · ТК · Статус</HCell>
+            <div style={{ width: COLS.bar }} />
+            <HCell w={COLS.raw}>Сырьё</HCell>
+            <HCell w={COLS.weight}>Вес, кг</HCell>
+            <HCell w={COLS.supplier}>Поставщик</HCell>
+            <HCell w={COLS.tara}>Тара</HCell>
+            <HCell flex>☑ Переработка · № акта</HCell>
+            <HCell w={COLS.gear} center>⚙</HCell>
+          </div>
+
+          <div ref={scrollRef} className="wsm-scroll" style={{ maxHeight: '62vh', overflowY: 'auto' }}>
+            {/* week bar */}
+            <div className="row" onClick={() => setWeekOpen((o) => !o)}
+              style={{ gap: 8, padding: '6px 10px', background: 'var(--accent)', color: '#fff', cursor: 'pointer', borderBottom: '2px solid #333' }}>
+              <span>{weekOpen ? '▾' : '▸'}</span>
+              <strong style={{ fontSize: '1.05em' }}>{week} неделя · {rangeLabel}</strong>
+              <span className="spacer" />
+              <ColorPill bg="#12532c">{byDay.length} дн.</ColorPill>
+              <ColorPill bg="#12532c">Σ {fmtKg(weekKg)} кг</ColorPill>
             </div>
-            {ships.map((s) => {
-              const next = nextStatus(s.status);
-              const canAdvance = next && (next === 'SHIPPED' ? can('shipments:write') : can('shipments:markArrived'));
+
+            {weekOpen && byDay.map(([day, ships]) => {
+              const collapsed = collapsedDays.has(day);
+              const dayKg = ships.reduce((sum, s) => sum + s.items.reduce((a, it) => a + Number(it.kg), 0), 0);
+              const posCount = ships.reduce((a, s) => a + s.items.length, 0);
               return (
-                <div key={s.id} className={`col ${s.status === 'PLANNED' ? 'striped' : ''}`} style={{ borderTop: '1px solid var(--border)', padding: '6px 12px', gap: 4 }}>
-                  <div className="row" style={{ flexWrap: 'wrap' }}>
-                    <StatusChip status={s.status} />
-                    <span className="muted">{s.shipDate ? fmtDay(new Date(s.shipDate)) : '—'} →</span>
-                    <b>{fmtDay(new Date(s.arrDate))}</b>
-                    {s.driver
-                      ? <button className="btn sm" onClick={() => onDriver(s.driver!)}>🚚 {s.driver.fio}{s.carrier ? ` · ${s.carrier.name}` : ''}</button>
-                      : <span className="muted">🕒 водитель не назначен</span>}
-                    {s.comment && <span className="muted">💬 {s.comment}</span>}
+                <div key={day}>
+                  {/* day header */}
+                  <div className="row sk-day" onClick={() => setCollapsedDays((prev) => { const n = new Set(prev); n.has(day) ? n.delete(day) : n.add(day); return n; })}
+                    style={{ gap: 6, padding: '4px 8px 4px 22px', borderBottom: '1px solid #ccc', cursor: 'pointer' }}>
+                    <span>{collapsed ? '▸' : '▾'}</span>
+                    <strong style={{ color: 'var(--accent)' }}>{fmtDay(new Date(day))}</strong>
                     <span className="spacer" />
-                    {canAdvance && next && (
-                      <button className="btn sm" onClick={() => changeStatus.mutate({ id: s.id, to: next })}>→ {STATUS_LABEL[next]}</button>
-                    )}
+                    <span className="muted">{ships.length} маш · {posCount} поз · Σ {fmtKg(dayKg)} кг</span>
                   </div>
-                  {s.items.map((it) => (
-                    <div className="row" key={it.id} style={{ flexWrap: 'wrap', paddingLeft: 8 }}>
-                      <RawPill raw={it.rawMaterial} />
-                      <span className="mono">{fmtKg(it.kg)} кг</span>
-                      <span className="muted">{it.supplier.name}</span>
-                      {it.taraType && <span className="pill">{it.taraType.name}{it.taraCount ? ` ×${it.taraCount}` : ''}</span>}
-                      {it.processed && <span className="mono muted">№ {it.actNumber}</span>}
-                      {it.processed && <QualityBadge item={it} onClick={() => onQuality(it)} />}
+
+                  {!collapsed && ships.map((s) => {
+                    const next = nextStatus(s.status);
+                    const canAdvance = next && (next === 'SHIPPED' ? can('shipments:write') : can('shipments:markArrived'));
+                    return (
+                      <div key={s.id} className="row" style={{ alignItems: 'stretch', gap: 0, borderBottom: '1.5px solid #c8c8c0', background: s.status === 'PLANNED' ? undefined : '#fff' }}>
+                        {/* meta column */}
+                        <div className={`col ${s.status === 'PLANNED' ? 'striped' : ''}`} style={{ width: COLS.meta, flexShrink: 0, gap: 2, padding: '5px 10px', borderRight: '1.5px solid #aaa', justifyContent: 'center' }}>
+                          <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                            <span className="muted">{s.shipDate ? fmtDay(new Date(s.shipDate)) : '—'}</span>
+                            <span className="muted">→</span>
+                            <b style={{ color: 'var(--accent)' }}>{fmtDay(new Date(s.arrDate))}</b>
+                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {s.driver ? (
+                                <>🚚 <button onClick={() => onDriver(s.driver!)} title="Карточка водителя"
+                                  style={{ border: 'none', background: 'none', color: '#1a4a8a', textDecoration: 'underline dotted', cursor: 'pointer', padding: 0, font: 'inherit' }}>{s.driver.fio}</button>
+                                  {s.carrier && <span className="muted"> · {s.carrier.name}</span>}</>
+                              ) : <span className="muted" style={{ fontStyle: 'italic' }}>🕒 водитель не назначен</span>}
+                            </span>
+                            <StatusChip status={s.status} />
+                          </div>
+                          <div className="row" style={{ gap: 6 }}>
+                            {s.comment && <span className="muted" style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💬 {s.comment}</span>}
+                            <span className="spacer" />
+                            {canAdvance && next && (
+                              <button className="btn sm primary" onClick={() => changeStatus.mutate({ id: s.id, to: next })}>→ {STATUS_LABEL[next]}</button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* items column */}
+                        <div className="col" style={{ flex: 1, minWidth: 0 }}>
+                          {s.items.map((it, i) => (
+                            <ItemLine key={it.id} item={it} first={i === 0} onQuality={() => onQuality(it)} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* day subtotal */}
+                  {!collapsed && (
+                    <div className="row sk-subtotal" style={{ flexWrap: 'wrap', gap: 6, padding: '4px 8px 4px 22px', borderBottom: '1px solid #ccc' }}>
+                      <strong className="muted">Итого {fmtDay(new Date(day))}:</strong>
+                      <ColorPill bg="#e8e8a0">Σ {fmtKg(dayKg)} кг</ColorPill>
+                      {rawTotals(ships).map((r) => (
+                        <ColorPill key={r.name} bg={r.bg} dot={r.dot}>{r.name} {fmtKg(r.kg)}</ColorPill>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               );
             })}
+
+            {/* week subtotal */}
+            {weekOpen && (
+              <div className="row" style={{ flexWrap: 'wrap', gap: 8, padding: '6px 12px', background: 'var(--week-total)', borderTop: '2px solid var(--accent)' }}>
+                <strong style={{ color: 'var(--accent)' }}>Итого {week} нед.:</strong>
+                <ColorPill bg="#b8dcc0">Σ {fmtKg(weekKg)} кг</ColorPill>
+                {rawTotals(allShips).map((r) => (
+                  <ColorPill key={r.name} bg={r.bg} dot={r.dot}>{r.name} {fmtKg(r.kg)}</ColorPill>
+                ))}
+              </div>
+            )}
           </div>
-        );
-      })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HCell({ w, flex, center, children }: { w?: number; flex?: boolean; center?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ width: w, flex: flex ? 1 : undefined, flexShrink: w ? 0 : undefined, minWidth: flex ? 110 : undefined, padding: '5px 8px', borderRight: '1px solid #555', fontWeight: 600, textAlign: center ? 'center' : 'left' }}>
+      {children}
+    </div>
+  );
+}
+
+// Одна позиция отгрузки — строка-таблица с цветной полосой по сырью.
+function ItemLine({ item, first, onQuality }: { item: ShipmentItem; first: boolean; onQuality: () => void }) {
+  const raw = item.rawMaterial;
+  const deco = item.processed ? 'line-through' : 'none';
+  const rowBg = item.processed
+    ? 'repeating-linear-gradient(135deg,#ececec,#ececec 4px,#e0e0e0 4px,#e0e0e0 8px)'
+    : `${raw.colorBg}55`;
+  return (
+    <div className="row" style={{ alignItems: 'stretch', gap: 0, background: rowBg, borderTop: first ? 'none' : '1px dashed #c8d0bd', minHeight: 26 }}>
+      <div style={{ width: COLS.bar, background: raw.colorDot, flexShrink: 0 }} />
+      {/* сырьё */}
+      <div className="row" style={{ width: COLS.raw, flexShrink: 0, gap: 5, padding: '2px 6px' }}>
+        <span className="dot" style={{ width: 8, height: 8, borderRadius: '50%', background: raw.colorDot, flexShrink: 0 }} />
+        <b style={{ textDecoration: deco }}>{raw.name}</b>
+      </div>
+      {/* вес */}
+      <div style={{ width: COLS.weight, flexShrink: 0, padding: '2px 6px', borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center' }}>
+        <b className="mono" style={{ textDecoration: deco }}>{fmtKg(item.kg)}</b>
+      </div>
+      {/* поставщик */}
+      <div style={{ width: COLS.supplier, flexShrink: 0, padding: '2px 6px', borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
+        <span style={{ textDecoration: deco, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.supplier.name}</span>
+      </div>
+      {/* тара */}
+      <div style={{ width: COLS.tara, flexShrink: 0, padding: '2px 6px', borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center' }}>
+        {item.taraType ? <span className="pill">{item.taraType.name}{item.taraCount ? `×${item.taraCount}` : ''}</span> : <span className="muted">—</span>}
+      </div>
+      {/* переработка · № акта · качество */}
+      <div className="row" style={{ flex: 1, minWidth: 110, gap: 5, padding: '2px 6px', borderLeft: '1px solid #ccd' }}>
+        <span style={{ width: 14, height: 14, border: '1.5px solid #333', borderRadius: 2, background: item.processed ? 'var(--accent)' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, flexShrink: 0 }}>
+          {item.processed && '✓'}
+        </span>
+        <span className="mono" style={{ color: item.processed ? 'var(--accent)' : '#bbb' }}>
+          {item.processed ? `№ ${item.actNumber ?? '—'}` : '№ акта'}
+        </span>
+        <span className="spacer" />
+        {item.processed && <QualityBadge item={item} onClick={onQuality} />}
+      </div>
+      {/* gear */}
+      <div style={{ width: COLS.gear, flexShrink: 0, borderLeft: '1px solid #ccd', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555' }}>✎</div>
     </div>
   );
 }
@@ -159,7 +328,7 @@ function HeatmapView({ year, week }: { year: number; week: number }) {
   const { data, isLoading } = useShipments(year, week);
   const monday = weekMonday(year, week);
 
-  const { matrix, raws, max } = useMemo(() => {
+  const { raws, max } = useMemo(() => {
     const m: Record<string, { name: string; colorBg: string; colorDot: string; days: number[] }> = {};
     let mx = 0;
     for (const s of data ?? []) {
@@ -171,14 +340,14 @@ function HeatmapView({ year, week }: { year: number; week: number }) {
         mx = Math.max(mx, r.days[dow - 1]!);
       }
     }
-    return { matrix: m, raws: Object.values(m), max: mx };
+    return { raws: Object.values(m), max: mx };
   }, [data, monday]);
 
   if (isLoading) return <Spinner />;
   if (!raws.length) return <div className="banner">Нет данных для heatmap за эту неделю.</div>;
 
   return (
-    <div className="card" style={{ overflow: 'auto' }}>
+    <div className="sk-box" style={{ overflow: 'auto' }}>
       <table className="tbl">
         <thead><tr><th>Сырьё</th>{DOW_LABELS.map((d) => <th key={d}>{d}</th>)}<th>Σ</th></tr></thead>
         <tbody>
@@ -229,7 +398,7 @@ function PlanView({ year, week }: { year: number; week: number }) {
 
   const cellColor = (plan: number, fact: number) => {
     if (plan === 0 && fact === 0) return undefined;
-    if (plan === 0 && fact > 0) return '#ffe0b8'; // незапланированное поступление
+    if (plan === 0 && fact > 0) return '#ffe0b8';
     const pct = (fact / plan) * 100;
     if (pct < 80) return '#fde2e2';
     if (pct <= 100) return '#fff3cd';
@@ -250,7 +419,7 @@ function PlanView({ year, week }: { year: number; week: number }) {
           <button className="btn sm" onClick={() => setDraft({})}>Отмена</button>
         </div>
       )}
-      <div className="card" style={{ overflow: 'auto' }}>
+      <div className="sk-box" style={{ overflow: 'auto' }}>
         <table className="tbl">
           <thead><tr><th>Сырьё</th>{DOW_LABELS.map((d, i) => <th key={d}>{d}<br /><span className="muted" style={{ fontWeight: 400 }}>{fmtDay(dayDate(year, week, i + 1))}</span></th>)}<th>Σ план</th></tr></thead>
           <tbody>

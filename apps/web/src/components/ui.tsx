@@ -3,9 +3,16 @@ import { STATUS_LABEL, type ShipmentStatus } from '@wsm/shared';
 import type { RawMaterial } from '../lib/types';
 import { useOnline } from '../lib/network';
 
+// 3 статуса (прототип): ◷ Заплан. / ✓ Отпр. / ⚑ Прибыло. Fallback на неизвестный (урок chat15).
+const STATUS_CHIP: Record<string, { icon: string; short: string }> = {
+  PLANNED: { icon: '◷', short: 'Заплан.' },
+  SHIPPED: { icon: '✓', short: 'Отпр.' },
+  ARRIVED: { icon: '⚑', short: 'Прибыло' },
+};
+
 export function StatusChip({ status }: { status: ShipmentStatus }) {
-  const icon = status === 'PLANNED' ? '◷' : status === 'SHIPPED' ? '✓' : '⚑';
-  return <span className={`chip st-${status}`}>{icon} {STATUS_LABEL[status]}</span>;
+  const meta = STATUS_CHIP[status] ?? { icon: '•', short: STATUS_LABEL[status] ?? String(status) };
+  return <span className={`chip st-${status}`}>{meta.icon} {meta.short}</span>;
 }
 
 export function RawPill({ raw, children }: { raw: Pick<RawMaterial, 'name' | 'colorBg' | 'colorDot'>; children?: ReactNode }) {

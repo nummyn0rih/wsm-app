@@ -21,7 +21,7 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: ({ url, request }) =>
-              request.method === 'GET' && /localhost:3001/.test(url.href),
+              request.method === 'GET' && url.pathname.startsWith('/api'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'wsm-api-read',
@@ -32,5 +32,18 @@ export default defineConfig({
       },
     }),
   ],
-  server: { port: 5173 },
+  // 5173 занят соседним проектом → 5174. Проксируем API через тот же origin (/api),
+  // чтобы браузеру (в т.ч. из Windows через WSL) хватало одного порта и cookie был same-origin.
+  server: {
+    host: true,          // bind all interfaces — WSL2→Windows доступ по eth0 IP
+    port: 5180,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, ''),
+      },
+    },
+  },
 });

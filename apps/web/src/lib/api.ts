@@ -1,4 +1,5 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+// Default to same-origin '/api' (vite proxy in dev). Override with VITE_API_URL if needed.
+export const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

@@ -17,6 +17,8 @@
     "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
+    "@fontsource-variable/caveat": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
