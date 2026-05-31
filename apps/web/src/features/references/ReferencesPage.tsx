@@ -6,12 +6,13 @@ import {
 import { api } from '../../lib/api';
 import { useAuth } from '../../auth/AuthContext';
 import { Modal, RawPill, Spinner } from '../../components/ui';
+import { SkButton } from '../../components/sketch';
 import type { Carrier } from '../../lib/types';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'enum' | 'carrier' | 'bool';
 interface Field { key: string; label: string; type: FieldType; options?: { value: string; label: string }[] }
 interface RefConfig {
-  key: string; label: string; path: string;
+  key: string; label: string; icon: string; path: string;
   columns: { key: string; label: string; render?: (row: any) => React.ReactNode }[];
   fields: Field[];
   search?: (row: any) => string;
@@ -21,7 +22,7 @@ const ENUM = (m: Record<string, string>) => Object.entries(m).map(([value, label
 
 const REFS: RefConfig[] = [
   {
-    key: 'raw-materials', label: 'Сырьё', path: '/raw-materials',
+    key: 'raw-materials', label: 'Сырьё', icon: '🥒', path: '/raw-materials',
     columns: [
       { key: 'name', label: 'Название', render: (r) => <RawPill raw={r} /> },
       { key: 'defaultUnit', label: 'Ед.' },
@@ -36,7 +37,35 @@ const REFS: RefConfig[] = [
     search: (r) => r.name,
   },
   {
-    key: 'drivers', label: 'Водители', path: '/drivers',
+    key: 'suppliers', label: 'Поставщики', icon: '🏭', path: '/suppliers',
+    columns: [
+      { key: 'name', label: 'Название' },
+      { key: 'inn', label: 'ИНН', render: (r) => <span className="mono">{r.inn ?? '—'}</span> },
+      { key: 'status', label: 'Статус', render: (r) => (
+        <span className="pill" style={r.status === 'ACTIVE'
+          ? { background: 'var(--st-shipped-bg)', color: 'var(--accent)', borderColor: 'var(--accent)' }
+          : { background: '#eee', color: '#999' }}>
+          {r.status === 'ACTIVE' ? 'активный' : 'архив'}
+        </span>
+      ) },
+    ],
+    fields: [
+      { key: 'name', label: 'Название', type: 'text' },
+      { key: 'inn', label: 'ИНН', type: 'text' },
+      { key: 'legalForm', label: 'Юр. форма', type: 'text' },
+      { key: 'status', label: 'Статус', type: 'enum', options: [{ value: 'ACTIVE', label: 'активный' }, { value: 'ARCHIVE', label: 'архив' }] },
+      { key: 'note', label: 'Заметка', type: 'textarea' },
+    ],
+    search: (r) => `${r.name} ${r.inn ?? ''}`,
+  },
+  {
+    key: 'carriers', label: 'ТК', icon: '🚛', path: '/carriers',
+    columns: [{ key: 'name', label: 'Название' }],
+    fields: [{ key: 'name', label: 'Название', type: 'text' }],
+    search: (r) => r.name,
+  },
+  {
+    key: 'drivers', label: 'Водители', icon: '👤', path: '/drivers',
     columns: [
       { key: 'fio', label: 'ФИО' },
       { key: 'phone', label: 'Телефон', render: (r) => <span className="mono">{r.phone}</span> },
@@ -52,29 +81,7 @@ const REFS: RefConfig[] = [
     search: (r) => `${r.fio} ${r.phone}`,
   },
   {
-    key: 'suppliers', label: 'Поставщики', path: '/suppliers',
-    columns: [
-      { key: 'name', label: 'Название' },
-      { key: 'inn', label: 'ИНН', render: (r) => <span className="mono">{r.inn ?? '—'}</span> },
-      { key: 'status', label: 'Статус', render: (r) => (r.status === 'ACTIVE' ? 'активный' : 'архив') },
-    ],
-    fields: [
-      { key: 'name', label: 'Название', type: 'text' },
-      { key: 'inn', label: 'ИНН', type: 'text' },
-      { key: 'legalForm', label: 'Юр. форма', type: 'text' },
-      { key: 'status', label: 'Статус', type: 'enum', options: [{ value: 'ACTIVE', label: 'активный' }, { value: 'ARCHIVE', label: 'архив' }] },
-      { key: 'note', label: 'Заметка', type: 'textarea' },
-    ],
-    search: (r) => `${r.name} ${r.inn ?? ''}`,
-  },
-  {
-    key: 'carriers', label: 'ТК', path: '/carriers',
-    columns: [{ key: 'name', label: 'Название' }],
-    fields: [{ key: 'name', label: 'Название', type: 'text' }],
-    search: (r) => r.name,
-  },
-  {
-    key: 'tara-types', label: 'Виды тары', path: '/tara-types',
+    key: 'tara-types', label: 'Виды тары', icon: '📦', path: '/tara-types',
     columns: [
       { key: 'name', label: 'Название' },
       { key: 'kind', label: 'Тип', render: (r) => TARA_KIND_LABEL[r.kind as TaraKind] },
@@ -86,7 +93,7 @@ const REFS: RefConfig[] = [
     search: (r) => r.name,
   },
   {
-    key: 'ingredients', label: 'Ингредиенты', path: '/ingredients',
+    key: 'ingredients', label: 'Ингредиенты', icon: '🧪', path: '/ingredients',
     columns: [
       { key: 'name', label: 'Название' },
       { key: 'unit', label: 'Ед.', render: (r) => INGREDIENT_UNIT_LABEL[r.unit as IngredientUnit] },
@@ -100,7 +107,7 @@ const REFS: RefConfig[] = [
     search: (r) => r.name,
   },
   {
-    key: 'seasons', label: 'Сезоны', path: '/seasons',
+    key: 'seasons', label: 'Сезоны', icon: '📅', path: '/seasons',
     columns: [
       { key: 'name', label: 'Название' },
       { key: 'isCurrent', label: 'Текущий', render: (r) => (r.isCurrent ? '✓' : '') },
@@ -114,16 +121,32 @@ const REFS: RefConfig[] = [
 ];
 
 export function ReferencesPage() {
+  const { can } = useAuth();
   const [tab, setTab] = useState(REFS[0]!.key);
   const cfg = REFS.find((r) => r.key === tab)!;
   return (
-    <div className="col" style={{ gap: 14 }}>
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        {REFS.map((r) => (
-          <button key={r.key} className={`btn sm ${r.key === tab ? 'primary' : ''}`} onClick={() => setTab(r.key)}>{r.label}</button>
-        ))}
+    <div className="refs">
+      <aside className="refs-side">
+        <div className="refs-side-head">Справочники</div>
+        <div className="refs-tabs">
+          {REFS.map((r) => (
+            <button
+              key={r.key}
+              className={`refs-tab ${r.key === tab ? 'active' : ''}`}
+              onClick={() => setTab(r.key)}
+            >
+              <span className="refs-tab-icon">{r.icon}</span>
+              <span className="refs-tab-label">{r.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="refs-side-foot">
+          {can('references:write') ? 'Редактирование доступно' : '👑 Изменения — у Админа'}
+        </div>
+      </aside>
+      <div className="refs-main">
+        <ReferenceTable key={cfg.key} cfg={cfg} />
       </div>
-      <ReferenceTable key={cfg.key} cfg={cfg} />
     </div>
   );
 }
@@ -154,11 +177,14 @@ function ReferenceTable({ cfg }: { cfg: RefConfig }) {
 
   return (
     <div className="col" style={{ gap: 10 }}>
-      <div className="row">
-        {cfg.search && <input placeholder="🔍 Поиск…" value={q} onChange={(e) => setQ(e.target.value)} style={{ padding: '6px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, width: 280 }} />}
-        <span className="muted">{rows.length} зап.</span>
+      <div className="row refs-head">
+        <span className="refs-title"><span className="refs-title-icon">{cfg.icon}</span>{cfg.label}</span>
         <span className="spacer" />
-        {canWrite && <button className="btn primary sm" onClick={() => setEditing({})}>＋ Добавить</button>}
+        {canWrite && <SkButton green onClick={() => setEditing({})}>＋ Добавить</SkButton>}
+      </div>
+      <div className="row">
+        {cfg.search && <input className="refs-search" placeholder="🔍 Поиск…" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 280 }} />}
+        <span className="muted">{rows.length} зап.</span>
       </div>
 
       <div className="card" style={{ overflow: 'auto' }}>

@@ -171,8 +171,40 @@ a { color: var(--accent); }
 table.tbl { width: 100%; border-collapse: collapse; background: var(--surface); }
 table.tbl th { background: var(--header); color: #fff; font-weight: 600; text-align: left; padding: 6px 10px; }
 table.tbl td { padding: 5px 10px; border-top: 1px solid var(--border); }
+table.tbl tbody tr:nth-child(even) td { background: #fafafa; }
 table.tbl tr:hover td { background: var(--surface-2); }
 .subtotal td { background: var(--subtotal); font-weight: 600; }
+
+/* references — суб-сайдбар табов + sketch-таблица (VariantD) */
+.refs {
+  display: flex; border: 2px solid #333; border-radius: 4px; overflow: hidden;
+  background: var(--surface); min-height: 60vh;
+}
+.refs-side {
+  width: 160px; flex-shrink: 0; background: #f5f3ef; border-right: 2px solid #333;
+  display: flex; flex-direction: column;
+}
+.refs-side-head {
+  padding: 8px 10px; background: var(--header); color: #fff; font-weight: 700; font-size: 15px;
+}
+.refs-tabs { flex: 1; overflow-y: auto; }
+.refs-tab {
+  display: flex; align-items: center; gap: 7px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; background: none; cursor: pointer;
+  border-bottom: 1px solid #e0e0e0; font-size: 15px; color: #333;
+}
+.refs-tab .refs-tab-icon { width: 18px; text-align: center; flex: none; }
+.refs-tab:hover:not(.active) { background: rgba(0,0,0,.04); }
+.refs-tab.active { background: var(--accent); color: #fff; font-weight: 700; }
+.refs-side-foot {
+  border-top: 1px solid #ddd; padding: 6px 10px; font-size: 11px; font-style: italic; color: #888;
+}
+.refs-main { flex: 1; min-width: 0; padding: 12px 14px; }
+.refs-head .refs-title { font-size: 1.25em; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; }
+.refs-head .refs-title-icon { font-size: 1.1em; }
+.refs-search {
+  padding: 5px 10px; border: 1.5px dashed #999; border-radius: 3px; background: #fffdf2;
+}
 
 /* segmented control */
 .seg { display: inline-flex; border: 2px solid #333; border-radius: 3px; overflow: hidden; background: #e8e5df; }
