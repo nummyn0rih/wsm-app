@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './auth/AuthContext';
 import { LoginPage } from './features/auth/LoginPage';
 import { ShipmentsPage } from './features/shipments/ShipmentsPage';
 import { ReferencesPage } from './features/references/ReferencesPage';
 import { OfflineIndicator, Spinner } from './components/ui';
+import { api } from './lib/api';
 
 const ROLE_LABEL: Record<string, string> = { ADMIN: '👑 Админ', OPERATOR: '🛠 Оператор', USER: '👁 Пользователь', MANAGER: '📊 Руководитель' };
 const ROLE_HINT: Record<string, string> = {
@@ -36,6 +38,33 @@ function SidebarItem({ icon, label, active, disabled, collapsed, hasChildren, ex
       {icon && <span className="nav-icon">{icon}</span>}
       {!collapsed && <span className="nav-label">{isChild ? `· ${label}` : label}</span>}
       {!collapsed && hasChildren && <span className="nav-chevron">{expanded ? '▾' : '▸'}</span>}
+    </button>
+  );
+}
+
+// Сброс отгрузок к дефолтным сид-данным. Только Админ + dev-сборка (роут на API
+// тоже существует лишь вне прода). Кнопка внизу сайдбара.
+const DEV = import.meta.env.DEV;
+
+function ResetButton() {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const onReset = async () => {
+    if (!confirm('Сбросить ВСЕ отгрузки к дефолтным сид-данным? Текущие изменения будут потеряны.')) return;
+    setBusy(true);
+    try {
+      await api.post('/dev/reset-shipments');
+      await qc.invalidateQueries({ queryKey: ['shipments'] });
+      await qc.invalidateQueries({ queryKey: ['week-plan'] });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Ошибка сброса');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button className="sidebar-reset" disabled={busy} onClick={() => void onReset()} title="Сбросить отгрузки к сид-данным (dev)">
+      {busy ? '⏳ Сброс…' : '↺ Сбросить'}
     </button>
   );
 }
@@ -98,6 +127,9 @@ export function App() {
               );
             })}
           </div>
+          {!collapsed && DEV && user.role === 'ADMIN' && (
+            <div className="sidebar-dev"><ResetButton /></div>
+          )}
           {!collapsed && <div className="sidebar-foot">{ROLE_HINT[user.role]}</div>}
         </aside>
 

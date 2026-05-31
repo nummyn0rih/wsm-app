@@ -1,16 +1,10 @@
 // Seed WSM demo data. Derived from reference/ prototype (palette, drivers, suppliers, quality params).
 // Idempotent: clears tables in FK-safe order, then recreates.
-import { PrismaClient, Role, ShipmentStatus, SupplierStatus, TaraKind, IngredientUnit, QualityParamRole } from '@prisma/client';
+import { PrismaClient, Role, SupplierStatus, TaraKind, IngredientUnit, QualityParamRole } from '@prisma/client';
 import argon2 from 'argon2';
+import { seedDefaultShipments } from '../src/seed-shipments.js';
 
 const prisma = new PrismaClient();
-
-// payable = факт − брак − (нестандарт если НЕ оплачивается отдельно)
-function calcPayable(factKg: number, rejectKg: number, nonStdKg: number, nonStdPaid: boolean) {
-  const payableKg = factKg - rejectKg - (nonStdPaid ? 0 : nonStdKg);
-  const payablePct = factKg > 0 ? Math.round((payableKg / factKg) * 10000) / 100 : 0;
-  return { payableKg, payablePct };
-}
 
 async function clear() {
   // delete deepest dependents first
@@ -118,9 +112,6 @@ async function main() {
       { name: 'Бочка пластик 220л', kind: TaraKind.DRUM_PLASTIC },
     ],
   });
-  const taraBox = await prisma.taraType.findFirst({ where: { kind: TaraKind.BOX } });
-  const taraDrum = await prisma.taraType.findFirst({ where: { kind: TaraKind.DRUM_METAL } });
-
   // ── Ингредиенты ──
   await prisma.ingredient.createMany({
     data: [
@@ -148,108 +139,13 @@ async function main() {
     ],
   });
 
-  // ── Демо-отгрузки (неделя 17, 21–22 апр 2025) ──
-  const d = (s: string) => new Date(s);
-
-  // Отгрузка 1 — Прибыло, огурцы, качество + PDF
-  {
-    const ship = await prisma.shipment.create({
-      data: {
-        shipDate: d('2025-04-19'), arrDate: d('2025-04-21'),
-        driverId: drivers['Вихров Павел Игоревич']!, carrierId: carriers['ИП Фастов']!,
-        status: ShipmentStatus.ARRIVED,
-      },
-    });
-    const item = await prisma.shipmentItem.create({
-      data: {
-        shipmentId: ship.id, rawMaterialId: raws['Огурцы']!, kg: 18500,
-        supplierId: suppliers['Байрамов А.']!, taraTypeId: taraBox?.id, taraCount: 420,
-        processed: true, actNumber: 'А-0421/01',
-      },
-    });
-    const { payableKg, payablePct } = calcPayable(18500, 300, 400, false);
-    const q = await prisma.quality.create({
-      data: {
-        shipmentItemId: item.id, factKg: 18500, rejectKg: 300, nonStdKg: 400,
-        nonStdPaidSeparately: false, payableKg, payablePct,
-        actNumber: 'А-0421/01', hasData: true, hasPdf: true,
-        pdfName: 'akt-А-0421-01.pdf', pdfPath: 'acts/demo-akt-0421-01.pdf', pdfSize: '184 КБ',
-        comment: 'Данные качества внесены приёмщиком.',
-      },
-    });
-    // калибры огурцов (payable-параметры): 6–9 и 9–12 суммой = payableKg
-    const cucParams = await prisma.qualityParam.findMany({
-      where: { rawMaterialId: raws['Огурцы']!, role: QualityParamRole.PAYABLE }, orderBy: { order: 'asc' },
-    });
-    if (cucParams.length === 2) {
-      await prisma.qualityCaliber.createMany({
-        data: [
-          { qualityId: q.id, qualityParamId: cucParams[0]!.id, kg: 7800 },
-          { qualityId: q.id, qualityParamId: cucParams[1]!.id, kg: payableKg - 7800 },
-        ],
-      });
-    }
-  }
-
-  // Отгрузка 2 — Отправлено, mixed (черри + томаты)
-  {
-    const ship = await prisma.shipment.create({
-      data: {
-        shipDate: d('2025-04-20'), arrDate: d('2025-04-21'),
-        driverId: drivers['Мартыно Виктор Олегович']!, carrierId: carriers['ИП Рябов']!,
-        status: ShipmentStatus.SHIPPED, comment: 'Догруз по пути',
-      },
-    });
-    const cherry = await prisma.shipmentItem.create({
-      data: { shipmentId: ship.id, rawMaterialId: raws['Черри']!, kg: 10000, supplierId: suppliers['Цой К.Т.']!, processed: true, actNumber: 'А-0421/02' },
-    });
-    const cp = calcPayable(10000, 150, 300, false);
-    await prisma.quality.create({
-      data: { shipmentItemId: cherry.id, factKg: 10000, rejectKg: 150, nonStdKg: 300, nonStdPaidSeparately: false, payableKg: cp.payableKg, payablePct: cp.payablePct, actNumber: 'А-0421/02', hasData: true, hasPdf: false, comment: 'Данные внесены, PDF ещё нет.' },
-    });
-    await prisma.shipmentItem.create({
-      data: { shipmentId: ship.id, rawMaterialId: raws['Томаты']!, kg: 10000, supplierId: suppliers['Ким Т.']!, processed: true, actNumber: 'А-0421/03' },
-    });
-    // у томатов только PDF, без структурированных данных — отметим через Quality с hasPdf
-    const tomItem = await prisma.shipmentItem.findFirst({ where: { shipmentId: ship.id, actNumber: 'А-0421/03' } });
-    if (tomItem) {
-      const tp = calcPayable(10000, 0, 0, false);
-      await prisma.quality.create({
-        data: { shipmentItemId: tomItem.id, factKg: 10000, payableKg: tp.payableKg, payablePct: tp.payablePct, actNumber: 'А-0421/03', hasData: false, hasPdf: true, pdfName: 'akt-А-0421-03.pdf', pdfPath: 'acts/demo-akt-0421-03.pdf', pdfSize: '120 КБ' },
-      });
-    }
-  }
-
-  // Отгрузка 3 — Запланировано (халапеньо, без качества)
-  {
-    const ship = await prisma.shipment.create({
-      data: {
-        shipDate: d('2025-04-21'), arrDate: d('2025-04-21'),
-        driverId: drivers['Ахмедов Рустам Шамилевич']!, carrierId: carriers['ТК Авто']!,
-        status: ShipmentStatus.PLANNED, comment: 'Ожидаем подтв.',
-      },
-    });
-    await prisma.shipmentItem.create({
-      data: { shipmentId: ship.id, rawMaterialId: raws['Халапеньо']!, kg: 8724, supplierId: suppliers['Мищенко']!, taraTypeId: taraDrum?.id, taraCount: 14 },
-    });
-  }
-
-  // ── План недели 17/2025: целевые значения по сырьё × день ──
-  const planCells: { rawMaterialId: string; dayOfWeek: number; planKg: number }[] = [
-    { rawMaterialId: raws['Огурцы']!, dayOfWeek: 1, planKg: 20000 },
-    { rawMaterialId: raws['Огурцы']!, dayOfWeek: 2, planKg: 18000 },
-    { rawMaterialId: raws['Черри']!, dayOfWeek: 1, planKg: 12000 },
-    { rawMaterialId: raws['Томаты']!, dayOfWeek: 2, planKg: 15000 },
-    { rawMaterialId: raws['Халапеньо']!, dayOfWeek: 1, planKg: 10000 },
-  ];
-  await prisma.weekPlanCell.createMany({
-    data: planCells.map((c) => ({ year: 2025, weekNumber: 17, ...c })),
-  });
+  // ── Демо-отгрузки: 50 шт по 3 неделям (текущая ±1), детерминированно ──
+  const ship = await seedDefaultShipments(prisma);
 
   console.log('Seed complete:');
   console.log('  users: 3 (admin/operator/user @wsm.local · pass: wsm12345)');
   console.log(`  raw materials: ${rawDefs.length}, carriers: ${carrierNames.length}, drivers: ${driverDefs.length}, suppliers: ${supplierNames.length}`);
-  console.log('  shipments: 3 (demo week 17/2025) + week plan cells');
+  console.log(`  shipments: ${ship.shipments} (недели ${ship.weeks.map((w) => `${w.week}/${w.year}`).join(', ')}) + week plan cells`);
 }
 
 main()

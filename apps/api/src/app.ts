@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth.js';
 import { referenceRoutes } from './routes/references.js';
 import { shipmentRoutes } from './routes/shipments.js';
 import { planRoutes } from './routes/plan.js';
+import { devRoutes } from './routes/dev.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -44,6 +45,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(referenceRoutes);
   await app.register(shipmentRoutes);
   await app.register(planRoutes);
+  if (env.nodeEnv !== 'production') await app.register(devRoutes);
 
   return app;
 }

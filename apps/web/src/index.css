@@ -138,6 +138,13 @@ a { color: var(--accent); }
   border-top: 1px solid #444; background: #1f1f1f; color: #888;
   font-size: 11px; font-style: italic; padding: 6px 10px;
 }
+.sidebar-dev { border-top: 1px solid #444; padding: 8px 10px; background: #1f1f1f; }
+.sidebar-reset {
+  width: 100%; padding: 5px 10px; border: 1.5px dashed #c8704a; border-radius: 3px;
+  background: #2a2020; color: #f0a878; font: inherit; font-size: 14px; cursor: pointer;
+}
+.sidebar-reset:hover:not(:disabled) { background: #3a2828; border-color: #e08a5a; }
+.sidebar-reset:disabled { opacity: .6; cursor: not-allowed; }
 
 .content { padding: 12px; overflow: auto; flex: 1; min-width: 0; }
 

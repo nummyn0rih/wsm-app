@@ -25,8 +25,8 @@ const shortFio = (fio: string) => {
 export function ShipmentsPage() {
   const { can } = useAuth();
   const [mode, setMode] = useState<Mode>(() => (sessionStorage.getItem('wsm.mode') as Mode) || 'table');
-  // default to seeded demo week (17/2025) so data is visible out of the box
-  const [{ year, week }, setWeek] = useState(() => ({ year: 2025, week: 17 }));
+  // default to current ISO week (seed fills current week ±1)
+  const [{ year, week }, setWeek] = useState(() => isoWeekOf(new Date()));
   const [driverCard, setDriverCard] = useState<Driver | null>(null);
   const [quality, setQuality] = useState<ShipmentItem | null>(null);
   const [showForm, setShowForm] = useState(false);
