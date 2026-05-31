@@ -121,32 +121,23 @@ const REFS: RefConfig[] = [
 ];
 
 export function ReferencesPage() {
-  const { can } = useAuth();
   const [tab, setTab] = useState(REFS[0]!.key);
   const cfg = REFS.find((r) => r.key === tab)!;
   return (
-    <div className="refs">
-      <aside className="refs-side">
-        <div className="refs-side-head">Справочники</div>
-        <div className="refs-tabs">
-          {REFS.map((r) => (
-            <button
-              key={r.key}
-              className={`refs-tab ${r.key === tab ? 'active' : ''}`}
-              onClick={() => setTab(r.key)}
-            >
-              <span className="refs-tab-icon">{r.icon}</span>
-              <span className="refs-tab-label">{r.label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="refs-side-foot">
-          {can('references:write') ? 'Редактирование доступно' : '👑 Изменения — у Админа'}
-        </div>
-      </aside>
-      <div className="refs-main">
-        <ReferenceTable key={cfg.key} cfg={cfg} />
+    <div className="col" style={{ gap: 12 }}>
+      <div className="refs-tabs">
+        {REFS.map((r) => (
+          <button
+            key={r.key}
+            className={`refs-tab ${r.key === tab ? 'active' : ''}`}
+            onClick={() => setTab(r.key)}
+          >
+            <span className="refs-tab-icon">{r.icon}</span>
+            <span className="refs-tab-label">{r.label}</span>
+          </button>
+        ))}
       </div>
+      <ReferenceTable key={cfg.key} cfg={cfg} />
     </div>
   );
 }
